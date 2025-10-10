@@ -6,4 +6,3 @@ python-dotenv
 openai
 # pyodbc  (opcional para tu local)
 reportlab
-fpdf2
