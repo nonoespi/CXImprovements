@@ -1,5 +1,5 @@
 import streamlit as st
-import os
+# import os
 from dotenv import load_dotenv
 import pandas as pd
 import certifi
@@ -18,9 +18,14 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib import colors
 from reportlab.lib.units import cm
 
-import logging
+import logging, os
 logging.basicConfig()
-logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
+logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)  # logs SQL en Cloud
+
+def _mask(v, keep=3):
+    if not v: return ""
+    v = str(v)
+    return v[:keep] + "…" if len(v) > keep else "…"
 
 # 🔹 Siempre limpiar cachés al arrancar
 st.cache_data.clear()
@@ -217,6 +222,17 @@ def crear_engine():
         params = urllib.parse.quote_plus(connection_string)
         return sa.create_engine(f"mssql+pyodbc:///?odbc_connect={params}")
 
+def probar_conexion(engine):
+    """Devuelve (ok: bool, msg: str)."""
+    try:
+        with engine.connect() as conn:
+            _ = conn.exec_driver_sql("SELECT 1").scalar()
+        return True, "SELECT 1 OK"
+    except Exception as e:
+        import traceback
+        tb = ''.join(traceback.format_exc())
+        return False, f"{repr(e)}\n{tb[-1200:]}"
+
 def obtener_micromomentos_por_bu(bu, eng):
     try:
         sql = text("""
@@ -266,7 +282,32 @@ def obtener_bus_por_micromomento(mm, bu_ref, eng):
 engine = None
 if "bu_simulada" in st.session_state:
     try:
-        engine = crear_engine()
+        # Crear engine
+        try:
+            engine = crear_engine()
+        except Exception as e:
+            st.error(f"Error creando engine: {repr(e)}")
+            engine = None
+        
+        # Diagnóstico (solo si no tenemos engine funcional)
+        if engine is None:
+            with st.expander("Diagnóstico SQL (temporal)"):
+                st.write("Dialecto:", cfg("SQL_DIALECT", "pyodbc"))
+                st.write("Servidor:", _mask(cfg("SQL_SERVER")))
+                st.write("BD:", cfg("SQL_DATABASE"))
+                st.write("Usuario:", _mask(cfg("SQL_USERNAME")))
+            st.stop()
+        
+        # Probar conexión
+        ok, msg = probar_conexion(engine)
+        if not ok:
+            st.error(f"Error al conectar con la base de datos:\n{msg}")
+            with st.expander("Diagnóstico SQL (temporal)"):
+                st.write("Dialecto:", cfg("SQL_DIALECT", "pyodbc"))
+                st.write("Servidor:", _mask(cfg("SQL_SERVER")))
+                st.write("BD:", cfg("SQL_DATABASE"))
+                st.write("Usuario:", _mask(cfg("SQL_USERNAME")))
+            st.stop()
 
         # Smoke test de conexión
         with engine.connect() as conn:
@@ -882,6 +923,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
