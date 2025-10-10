@@ -17,6 +17,10 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib import colors
 from reportlab.lib.units import cm
 
+import logging
+logging.basicConfig()
+logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
+
 # 🔹 Siempre limpiar cachés al arrancar
 st.cache_data.clear()
 st.cache_resource.clear()
@@ -211,6 +215,11 @@ def crear_engine():
         )
         params = urllib.parse.quote_plus(connection_string)
         return sa.create_engine(f"mssql+pyodbc:///?odbc_connect={params}")
+
+    # Smoke test de conexión
+    with engine.connect() as conn:
+        ping = conn.exec_driver_sql("SELECT 1").scalar()
+        st.caption(f"Ping SQL: {ping}")
 
 def obtener_micromomentos_por_bu(bu, eng):
     try:
@@ -858,5 +867,6 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
