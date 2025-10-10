@@ -1,7 +1,7 @@
 streamlit
 pandas
 sqlalchemy
-pytds
+python-tds
 python-dotenv
 openai
-pyodbc
+# pyodbc  (opcional para tu local)
