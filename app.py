@@ -18,11 +18,6 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib import colors
 from reportlab.lib.units import cm
 
-# ⚠️ AJUSTA estos nombres a los tuyos reales:
-TABLA_MM = "dbo.TU_TABLA_MICROMOMENTOS"   # p.ej. dbo.Micromomentos
-CAMPO_MM = "micromomento"                 # p.ej. Micromomento
-CAMPO_BU = "BU"                           # p.ej. BU, BusinessUnit, etc.
-
 import logging
 logging.basicConfig()
 logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
@@ -224,13 +219,13 @@ def crear_engine():
 
 def obtener_micromomentos_por_bu(bu, eng):
     try:
-        query = f"""
-            SELECT DISTINCT micromomento 
+        sql = text("""
+            SELECT DISTINCT micromomento
             FROM micromomentos_actuar
-            WHERE bu = '{bu}'
+            WHERE UPPER(LTRIM(RTRIM(bu))) = UPPER(LTRIM(RTRIM(:bu)))
             ORDER BY micromomento
-        """
-        df = pd.read_sql(query, eng)
+        """)
+        df = pd.read_sql_query(sql, eng, params={"bu": bu})
         return df["micromomento"].tolist() if not df.empty else []
     except Exception as e:
         st.warning(f"No se pudieron recuperar micromomentos para {bu}: {e}")
@@ -242,25 +237,28 @@ def obtener_bus_por_micromomento(mm, bu_ref, eng):
     encuentra su micromomento_global y devuelve la lista de BUs donde aparece.
     """
     try:
-        subquery = f"""
-            SELECT micromomento_global 
+        # 1) Resolver el micromomento_global a partir de (BU, micromomento)
+        sql1 = text("""
+            SELECT TOP 1 micromomento_global
             FROM micromomentos_actuar
-            WHERE UPPER(bu) = UPPER('{bu_ref}') 
-              AND UPPER(micromomento) = UPPER('{mm}')
-        """
-        df_sub = pd.read_sql(subquery, eng)
+            WHERE UPPER(LTRIM(RTRIM(bu))) = UPPER(LTRIM(RTRIM(:bu)))
+              AND UPPER(LTRIM(RTRIM(micromomento))) = UPPER(LTRIM(RTRIM(:mm)))
+        """)
+        df_sub = pd.read_sql_query(sql1, eng, params={"bu": bu_ref, "mm": mm})
         if df_sub.empty:
             return []
-        micromomento_global = df_sub.iloc[0]["micromomento_global"]
 
-        query_bu = f"""
-            SELECT DISTINCT bu 
+        mm_global = df_sub.iloc[0]["micromomento_global"]
+
+        # 2) BUs donde aparece ese micromomento_global
+        sql2 = text("""
+            SELECT DISTINCT bu
             FROM micromomentos_actuar
-            WHERE micromomento_global = '{micromomento_global}'
+            WHERE micromomento_global = :mmg
             ORDER BY bu
-        """
-        df_bu_mm = pd.read_sql(query_bu, eng)
-        return df_bu_mm["bu"].tolist() if not df_bu_mm.empty else []
+        """)
+        df_bu = pd.read_sql_query(sql2, eng, params={"mmg": mm_global})
+        return df_bu["bu"].tolist() if not df_bu.empty else []
     except Exception as e:
         st.warning(f"No se pudieron recuperar BUs para {mm}: {e}")
         return []
@@ -270,11 +268,14 @@ if "bu_simulada" in st.session_state:
     try:
         engine = crear_engine()
 
-        # Test de conexión (muestra 1 si conecta)
-        with engine.connect() as conn:
+        # Smoke test de conexión
+        with engine_final.connect() as conn:
             ping = conn.exec_driver_sql("SELECT 1").scalar()
-        import streamlit as st
-        st.caption(f"Ping SQL: {ping}")
+            st.caption(f"Ping SQL (final): {ping}")
+
+        with engine.connect() as conn:
+            df_probe = pd.read_sql_query("SELECT TOP 5 * FROM micromomentos_actuar", conn)
+        st.caption(f"Probe micromomentos_actuar: filas={len(df_probe)} cols={list(df_probe.columns)}")
             
         missing = [k for k in ["SQL_SERVER","SQL_DATABASE","SQL_USERNAME","SQL_PASSWORD"] if not cfg(k)]
         if missing:
@@ -476,12 +477,11 @@ if "bu_simulada" in st.session_state and engine is not None:
 if st.session_state.get("finalizado", False):
     try:
         engine_final = crear_engine()
-        
-        # Test de conexión (muestra 1 si conecta)
-        with engine.connect() as conn:
+
+        # Smoke test de conexión
+        with engine_final.connect() as conn:
             ping = conn.exec_driver_sql("SELECT 1").scalar()
-        import streamlit as st
-        st.caption(f"Ping SQL: {ping}")
+            st.caption(f"Ping SQL (final): {ping}")
             
         missing = [k for k in ["SQL_SERVER","SQL_DATABASE","SQL_USERNAME","SQL_PASSWORD"] if not cfg(k)]
         if missing:
@@ -882,6 +882,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
