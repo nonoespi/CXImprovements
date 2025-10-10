@@ -2,6 +2,7 @@ import streamlit as st
 import os
 from dotenv import load_dotenv
 import pandas as pd
+import certifi
 import sqlalchemy as sa
 import urllib
 import json
@@ -192,13 +193,12 @@ def crear_engine():
     password = cfg("SQL_PASSWORD")
 
     if dialect == "pytds":
-        # Camino sin ODBC para Streamlit Cloud (puro Python)
-        # encrypt=yes recomendado para Azure SQL; autocommit para lecturas ágiles
+        # 🔒 TLS activado pasando cafile (certifi)
         return sa.create_engine(
-            # Forzamos TLS con sslmode=require; autocommit para lecturas ágiles
-            f"mssql+pytds://{username}:{password}@{server}:1433/{database}"
-            "?sslmode=require&autocommit=true"
+            f"mssql+pytds://{username}:{password}@{server}:1433/{database}?autocommit=true",
+            connect_args={"cafile": certifi.where()}  # <-- habilita TLS
         )
+
     else:
         # Camino original con ODBC para local (requiere ODBC Driver 17 instalado)
         driver = cfg("SQL_DRIVER", "ODBC Driver 17 for SQL Server")
@@ -858,3 +858,4 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
