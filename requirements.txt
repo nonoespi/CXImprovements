@@ -2,7 +2,8 @@ streamlit
 pandas
 sqlalchemy
 python-tds
+sqlalchemy-pytds
 python-dotenv
 openai
-# pyodbc  (opcional para tu local)
 reportlab
+# pyodbc   <- solo local, opcional
