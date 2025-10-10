@@ -6,4 +6,5 @@ sqlalchemy-pytds
 python-dotenv
 openai
 reportlab
+certifi
 # pyodbc   <- solo local, opcional
