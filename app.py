@@ -195,7 +195,9 @@ def crear_engine():
         # Camino sin ODBC para Streamlit Cloud (puro Python)
         # encrypt=yes recomendado para Azure SQL; autocommit para lecturas ágiles
         return sa.create_engine(
-            f"mssql+pytds://{username}:{password}@{server}:1433/{database}?encrypt=yes&autocommit=true"
+            # Forzamos TLS con sslmode=require; autocommit para lecturas ágiles
+            f"mssql+pytds://{username}:{password}@{server}:1433/{database}"
+            "?sslmode=require&autocommit=true"
         )
     else:
         # Camino original con ODBC para local (requiere ODBC Driver 17 instalado)
@@ -854,4 +856,5 @@ with header_ph.container():
       <h1>CX Improvements</h1>
       {'<a class="download-btn" download="historico_conversacion.pdf" href="data:application/pdf;base64,'+b64+'" title="Descargar PDF">'+svg_icon+'</a>' if pdf_bytes else ''}
     </div>
+
     """, unsafe_allow_html=True)
