@@ -237,7 +237,7 @@ def obtener_micromomentos_por_bu(bu, eng):
     try:
         sql = text("""
             SELECT DISTINCT micromomento
-            FROM micromomentos_actuar
+            FROM dbo.Micromomentos_Actuar
             WHERE UPPER(LTRIM(RTRIM(bu))) = UPPER(LTRIM(RTRIM(:bu)))
             ORDER BY micromomento
         """)
@@ -256,7 +256,7 @@ def obtener_bus_por_micromomento(mm, bu_ref, eng):
         # 1) Resolver el micromomento_global a partir de (BU, micromomento)
         sql1 = text("""
             SELECT TOP 1 micromomento_global
-            FROM micromomentos_actuar
+            FROM dbo.Micromomentos_Actuar
             WHERE UPPER(LTRIM(RTRIM(bu))) = UPPER(LTRIM(RTRIM(:bu)))
               AND UPPER(LTRIM(RTRIM(micromomento))) = UPPER(LTRIM(RTRIM(:mm)))
         """)
@@ -269,7 +269,7 @@ def obtener_bus_por_micromomento(mm, bu_ref, eng):
         # 2) BUs donde aparece ese micromomento_global
         sql2 = text("""
             SELECT DISTINCT bu
-            FROM micromomentos_actuar
+            FROM dbo.Micromomentos_Actuar
             WHERE micromomento_global = :mmg
             ORDER BY bu
         """)
@@ -323,7 +323,16 @@ if "bu_simulada" in st.session_state:
             st.warning(f"Faltan secretos de BBDD: {', '.join(missing)}")
         st.session_state["micromomentos_simulada"] = obtener_micromomentos_por_bu(st.session_state["bu_simulada"], engine)
     except Exception as e:
-        st.error(f"Error al conectar con la base de datos: {e}")
+        import traceback
+        tb = ''.join(traceback.format_exc())
+        st.error(f"Error al conectar con la base de datos: {repr(e)}")
+        with st.expander("Diagnóstico SQL (temporal)"):
+            st.write("Dialecto:", cfg("SQL_DIALECT", "pyodbc"))
+            st.write("Servidor:", _mask(cfg("SQL_SERVER")))
+            st.write("BD:", cfg("SQL_DATABASE"))
+            st.write("Usuario:", _mask(cfg("SQL_USERNAME")))
+            st.code(tb[-2000:])
+
 
 # =========================================================
 # 🔹 Interfaz tipo "chat" por BOTONES (sin LLM)
@@ -923,6 +932,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
