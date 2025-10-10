@@ -269,7 +269,7 @@ if "bu_simulada" in st.session_state:
         engine = crear_engine()
 
         # Smoke test de conexión
-        with engine_final.connect() as conn:
+        with engine.connect() as conn:
             ping = conn.exec_driver_sql("SELECT 1").scalar()
             st.caption(f"Ping SQL (final): {ping}")
 
@@ -882,6 +882,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
