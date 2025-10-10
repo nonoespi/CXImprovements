@@ -196,7 +196,7 @@ def crear_engine():
         # 🔒 TLS activado pasando cafile (certifi)
         return sa.create_engine(
             f"mssql+pytds://{username}:{password}@{server}:1433/{database}?autocommit=true",
-            connect_args={"cafile": certifi.where()}  # <-- habilita TLS
+            connect_args={"cafile": certifi.where()}  # activa TLS y valida CA
         )
 
     else:
@@ -858,4 +858,5 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
