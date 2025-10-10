@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 import pandas as pd
 import certifi
 import sqlalchemy as sa
+from sqlalchemy import text
 import urllib
 import json
 from openai import AzureOpenAI
@@ -16,6 +17,11 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib import colors
 from reportlab.lib.units import cm
+
+# ⚠️ AJUSTA estos nombres a los tuyos reales:
+TABLA_MM = "dbo.TU_TABLA_MICROMOMENTOS"   # p.ej. dbo.Micromomentos
+CAMPO_MM = "micromomento"                 # p.ej. Micromomento
+CAMPO_BU = "BU"                           # p.ej. BU, BusinessUnit, etc.
 
 import logging
 logging.basicConfig()
@@ -264,10 +270,11 @@ if "bu_simulada" in st.session_state:
     try:
         engine = crear_engine()
 
-        # Smoke test de conexión
+        # Test de conexión (muestra 1 si conecta)
         with engine.connect() as conn:
             ping = conn.exec_driver_sql("SELECT 1").scalar()
-            st.caption(f"Ping SQL: {ping}")
+        import streamlit as st
+        st.caption(f"Ping SQL: {ping}")
             
         missing = [k for k in ["SQL_SERVER","SQL_DATABASE","SQL_USERNAME","SQL_PASSWORD"] if not cfg(k)]
         if missing:
@@ -470,10 +477,11 @@ if st.session_state.get("finalizado", False):
     try:
         engine_final = crear_engine()
         
-        # Smoke test de conexión
+        # Test de conexión (muestra 1 si conecta)
         with engine.connect() as conn:
             ping = conn.exec_driver_sql("SELECT 1").scalar()
-            st.caption(f"Ping SQL: {ping}")
+        import streamlit as st
+        st.caption(f"Ping SQL: {ping}")
             
         missing = [k for k in ["SQL_SERVER","SQL_DATABASE","SQL_USERNAME","SQL_PASSWORD"] if not cfg(k)]
         if missing:
@@ -874,6 +882,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
