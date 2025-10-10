@@ -216,11 +216,6 @@ def crear_engine():
         params = urllib.parse.quote_plus(connection_string)
         return sa.create_engine(f"mssql+pyodbc:///?odbc_connect={params}")
 
-    # Smoke test de conexión
-    with engine.connect() as conn:
-        ping = conn.exec_driver_sql("SELECT 1").scalar()
-        st.caption(f"Ping SQL: {ping}")
-
 def obtener_micromomentos_por_bu(bu, eng):
     try:
         query = f"""
@@ -268,6 +263,12 @@ engine = None
 if "bu_simulada" in st.session_state:
     try:
         engine = crear_engine()
+
+        # Smoke test de conexión
+        with engine.connect() as conn:
+            ping = conn.exec_driver_sql("SELECT 1").scalar()
+            st.caption(f"Ping SQL: {ping}")
+            
         missing = [k for k in ["SQL_SERVER","SQL_DATABASE","SQL_USERNAME","SQL_PASSWORD"] if not cfg(k)]
         if missing:
             st.warning(f"Faltan secretos de BBDD: {', '.join(missing)}")
@@ -468,6 +469,12 @@ if "bu_simulada" in st.session_state and engine is not None:
 if st.session_state.get("finalizado", False):
     try:
         engine_final = crear_engine()
+        
+        # Smoke test de conexión
+        with engine.connect() as conn:
+            ping = conn.exec_driver_sql("SELECT 1").scalar()
+            st.caption(f"Ping SQL: {ping}")
+            
         missing = [k for k in ["SQL_SERVER","SQL_DATABASE","SQL_USERNAME","SQL_PASSWORD"] if not cfg(k)]
         if missing:
             st.warning(f"Faltan secretos de BBDD: {', '.join(missing)}")
@@ -867,6 +874,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
