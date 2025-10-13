@@ -18,6 +18,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib import colors
 from reportlab.lib.units import cm
 from pathlib import Path
+import tiktoken 
 
 import logging, os
 logging.basicConfig()
@@ -111,6 +112,31 @@ def load_df_mejoras() -> pd.DataFrame:
 @st.cache_data(show_spinner=False)
 def load_df_usuarios() -> pd.DataFrame:
     return _load_parquet("usuarios.parquet")  # ID_USUARIO, USUARIO
+
+def count_tokens_messages(messages, encoding_name="cl100k_base"):
+    """
+    Estima tokens de un payload de chat.messages al estilo OpenAI.
+    Fórmula basada en la guía oficial: ~4 tokens por mensaje + contenido.
+    """
+    try:
+        enc = tiktoken.get_encoding(encoding_name)
+    except Exception:
+        # Fallback robusto si falta la encoding; no debería ocurrir con tiktoken moderno
+        enc = tiktoken.get_encoding("cl100k_base")
+
+    tokens = 0
+    for m in messages:
+        # Cada mensaje aporta ~4 tokens (role, separators…)
+        tokens += 4
+        for k, v in m.items():
+            if isinstance(v, str):
+                tokens += len(enc.encode(v))
+            # Cuando viene 'name', se resta 1 token
+            if k == "name":
+                tokens -= 1
+    # +2 tokens de primado del asistente
+    tokens += 2
+    return tokens
 
 st.markdown("""
 <style>
@@ -1026,6 +1052,37 @@ if st.session_state.get("finalizado", False):
         Histórico de Improvements (JSON): {json.dumps(historico, ensure_ascii=False)}
         """
 
+        # 👉 NUEVO: construir el payload 'messages' explícitamente y diagnosticar
+        messages_payload = [
+            {"role": "system", "content": system_prompt},
+            *st.session_state["chat_history_analisis"],
+            {"role": "user", "content": prompt}
+        ]
+        
+        # Estimar tokens
+        try:
+            tokens_est = count_tokens_messages(messages_payload)
+        except Exception as _tok_err:
+            tokens_est = None
+        
+        # Panel de diagnóstico visible en UI
+        with st.expander("🧪 Diagnóstico: payload enviado y tokens (estimado)", expanded=False):
+            st.write("Modelo/Deployment:", deployment)
+            st.write("API version:", cfg("AZURE_OPENAI_API_VERSION"))
+            if tokens_est is not None:
+                st.write(f"Tokens estimados del payload: **{tokens_est}**")
+            else:
+                st.write("No se pudo estimar tokens.")
+            # Mostrar una vista del system prompt (truncado por seguridad visual si es largo)
+            max_chars = 2000
+            sp_preview = system_prompt if len(system_prompt) <= max_chars else system_prompt[:max_chars] + " …[truncado]"
+            st.subheader("System prompt (preview)")
+            st.code(sp_preview)
+            st.subheader("messages (payload completo)")
+            st.json(messages_payload)
+        
+        # 👉 FIN NUEVO
+
         try:
             response = client.chat.completions.create(
                 model=deployment,
@@ -1118,4 +1175,5 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
