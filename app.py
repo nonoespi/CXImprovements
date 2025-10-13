@@ -446,7 +446,7 @@ def obtener_improvements_offline(bu: str|None, micromomento: str|None) -> pd.Dat
     df_unique = df.drop_duplicates(subset=key_cols)
     total_unique = len(df_unique)
 
-    st.caption(f"Se han cargado {total_unique} Improvements disponibles (modo DEMO).")
+    # st.caption(f"Se han cargado {total_unique} Improvements disponibles (modo DEMO).")
 
     return df.reset_index(drop=True)
 
@@ -1137,6 +1137,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
