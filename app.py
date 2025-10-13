@@ -711,7 +711,7 @@ if st.session_state.get("finalizado", False):
             df_unique = df.drop_duplicates(subset=key_cols)
             total_unique = len(df_unique)
         
-            if total_unique > 200:
+            if total_unique > 75:
                 # Semilla estable por selección (opcional): cambia a None si la quieres cambiar cada rerun
                 # from hashlib import sha256
                 # seed = int(sha256(f"{bu_filter}|{mm_filter}".encode()).hexdigest()[:8], 16)
@@ -727,7 +727,7 @@ if st.session_state.get("finalizado", False):
                 df = df.merge(sampled_keys, on=key_cols, how="inner").reset_index(drop=True)
         
                 # 5) Aviso
-                st.caption(f"Se han seleccionado aleatoriamente 200 improvements únicas de {total_unique} disponibles (modo OFFLINE).")
+                st.caption(f"Se han seleccionado aleatoriamente 75 improvements de las {total_unique} disponibles (modo DEMO).")
 
         else:
             # ---------- SQL ----------
@@ -1118,3 +1118,4 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
