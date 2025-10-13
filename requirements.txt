@@ -11,4 +11,4 @@ pyOpenSSL
 cryptography
 pyarrow
 tiktoken
-# pyodbc   <- solo para tu local, opcional
+pyodbc
