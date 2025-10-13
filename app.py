@@ -729,9 +729,6 @@ if st.session_state.get("finalizado", False):
                 # 5) Aviso
                 st.caption(f"Se han seleccionado aleatoriamente 50 improvements de las {total_unique} disponibles (modo DEMO).")
 
-            else:
-                st.caption(f"Se han seleccionado las {total_unique} improvements disponibles (modo DEMO).")
-
         else:
             # ---------- SQL ----------
             engine_final = crear_engine()
@@ -1121,6 +1118,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
