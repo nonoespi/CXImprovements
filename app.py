@@ -727,7 +727,7 @@ if st.session_state.get("finalizado", False):
                 df = df.merge(sampled_keys, on=key_cols, how="inner").reset_index(drop=True)
         
                 # 5) Aviso
-                st.caption(f"Se han seleccionado aleatoriamente 100 improvements únicas de {total_unique} disponibles (modo OFFLINE).")
+                st.caption(f"Se han seleccionado aleatoriamente 200 improvements únicas de {total_unique} disponibles (modo OFFLINE).")
 
         else:
             # ---------- SQL ----------
@@ -1118,6 +1118,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
