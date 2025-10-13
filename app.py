@@ -752,7 +752,8 @@ if st.session_state.get("finalizado", False):
             # ---------- OFFLINE (Parquet) ----------
             df = obtener_improvements_offline(
                 bu=bu_filter,
-                micromomento=mm_filter
+                micromomento=mm_filter,
+                bu_ref_global=st.session_state.get("bu_simulada")  # 👈 BU de referencia, como en SQL
             )
 
             # 1) Elimina mejoras sin detalle (como ya hacías en SQL)
@@ -778,7 +779,7 @@ if st.session_state.get("finalizado", False):
         
                 sampled_keys = (
                     df_unique
-                    .sample(n=100, random_state=seed)
+                    .sample(n=75, random_state=seed)
                     [key_cols]
                 )
         
@@ -1208,6 +1209,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
