@@ -19,6 +19,10 @@ from reportlab.lib import colors
 from reportlab.lib.units import cm
 from pathlib import Path
 import tiktoken 
+from datetime import datetime, date
+from decimal import Decimal
+import numpy as np
+import uuid
 
 import logging, os
 logging.basicConfig()
@@ -28,6 +32,39 @@ def _mask(v, keep=3):
     if not v: return ""
     v = str(v)
     return v[:keep] + "…" if len(v) > keep else "…"
+
+
+def to_jsonable(obj):
+    # Fechas
+    if isinstance(obj, (datetime, date, pd.Timestamp)):
+        return obj.isoformat()
+
+    # Números numpy / pandas
+    if isinstance(obj, (np.integer, )):
+        return int(obj)
+    if isinstance(obj, (np.floating, )):
+        return float(obj)
+    if isinstance(obj, (np.ndarray, )):
+        return obj.tolist()
+
+    # Decimales
+    if isinstance(obj, Decimal):
+        return float(obj)
+
+    # Conjuntos / UUID
+    if isinstance(obj, (set, frozenset)):
+        return list(obj)
+    if isinstance(obj, (uuid.UUID, )):
+        return str(obj)
+
+    # Estructuras pandas
+    if isinstance(obj, pd.DataFrame):
+        return obj.to_dict(orient="records")
+    if isinstance(obj, pd.Series):
+        return obj.to_dict()
+
+    # Último recurso
+    return str(obj)
 
 # 🔹 Siempre limpiar cachés al arrancar
 st.cache_data.clear()
@@ -1002,6 +1039,13 @@ if st.session_state.get("finalizado", False):
         micromomento = st.session_state.get("mm_seleccionado") or "N/A"
         historico = st.session_state.get("historico_mejoras", [])
 
+        # 👇 AÑADIR ESTO justo antes de crear system_prompt
+        try:
+            safe_historico_json = json.dumps(historico, ensure_ascii=False, default=to_jsonable)
+        except TypeError:
+            # fallback por si algo raro se cuela
+            safe_historico_json = json.dumps(str(historico), ensure_ascii=False)
+
         system_prompt = f"""
         Eres un asesor experto de Bupa, referente internacional en gestión y optimización de la experiencia de cliente (CX Improvements). Tu función es:
 
@@ -1083,7 +1127,7 @@ if st.session_state.get("finalizado", False):
         ---
 
         Micromomento seleccionado: {micromomento}
-        Histórico de Improvements (JSON): {json.dumps(historico, ensure_ascii=False)}
+        Histórico de Improvements (JSON): {safe_historico_json}
         """
 
         # 👉 NUEVO: construir el payload 'messages' explícitamente y diagnosticar
@@ -1209,6 +1253,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
