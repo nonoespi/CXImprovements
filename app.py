@@ -909,7 +909,15 @@ if st.session_state.get("finalizado", False):
     if "analisis_iniciado" not in st.session_state:
         # Guardamos el histórico para el segundo chatbot
         if 'df' in locals() and not df.empty:
-            st.session_state["historico_mejoras"] = df.to_dict(orient="records")
+            # Convierte datetimes y NaN y devuelve tipos nativos serializables
+            df_jsonable = df.copy()
+            if "FECHA" in df_jsonable.columns and pd.api.types.is_datetime64_any_dtype(df_jsonable["FECHA"]):
+                df_jsonable["FECHA"] = df_jsonable["FECHA"].dt.strftime("%Y-%m-%d")
+            
+            # to_json maneja numpy/pandas -> luego volvemos a Python con loads
+            st.session_state["historico_mejoras"] = json.loads(
+                df_jsonable.to_json(orient="records", force_ascii=False)
+            )
         else:
             st.session_state["historico_mejoras"] = []
 
@@ -1034,7 +1042,7 @@ if st.session_state.get("finalizado", False):
         ---
 
         Micromomento seleccionado: {micromomento}
-        Histórico de Improvements (JSON): {json.dumps(historico, ensure_ascii=False)}
+        Histórico de Improvements (JSON): {json.dumps(historico, ensure_ascii=False, default=str)}
         """
 
         try:
@@ -1129,5 +1137,6 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
