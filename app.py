@@ -17,6 +17,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib import colors
 from reportlab.lib.units import cm
+from pathlib import Path
 
 import logging, os
 logging.basicConfig()
@@ -67,12 +68,78 @@ with st.sidebar:
 # =========================================================
 load_dotenv()
 
-# --- Secrets helper: prioriza st.secrets y cae a variables de entorno ---
 def cfg(key, default=None):
+    # Prioriza st.secrets; si no, variables de entorno (para local)
     try:
         return st.secrets[key]
     except Exception:
+        import os
         return os.getenv(key, default)
+
+OFFLINE = cfg("SQL_DIALECT", "pyodbc").lower() == "offline"
+
+@st.cache_data(show_spinner=False)
+def _load_parquet(name: str) -> pd.DataFrame:
+    """Busca primero en ./data/name y luego en ./name."""
+    base = Path(__file__).parent
+    candidates = [
+        base / "data" / name,
+        base / name,
+    ]
+    for path in candidates:
+        if path.exists():
+            return pd.read_parquet(path)
+    raise FileNotFoundError(
+        f"No encuentro {name}. Colócalo en /data o en la raíz del proyecto."
+    )
+
+@st.cache_data(show_spinner=False)
+def load_df_micros() -> pd.DataFrame:
+    df = _load_parquet("micromomentos_actuar.parquet")
+    df = df.rename(columns={
+        "BU": "bu",
+        "Micromomento": "micromomento",
+        "Micromomento_Global": "micromomento_global",
+    })
+    return df[["bu", "micromomento", "micromomento_global"]]
+    
+@st.cache_data(show_spinner=False)
+def load_df_mejoras() -> pd.DataFrame:
+    """
+    Este parquet ya viene consolidado de SQL con las columnas:
+    FECHA, BU, MICROMOMENTO, MICROMOMENTO_GLOBAL, USUARIO (opcional), MEJORA
+    """
+    df = _load_parquet("mejorasactuar.parquet")
+    # Normaliza nombres en mayúsculas por seguridad:
+    df.columns = [c.upper() for c in df.columns]
+    # Asegura columnas clave (algunas demos no incluyen USUARIO):
+    for col in ["FECHA","BU","MICROMOMENTO","MICROMOMENTO_GLOBAL","MEJORA"]:
+        if col not in df.columns:
+            df[col] = None
+    # Homogeneiza BU (espacios, mayúsculas)
+    df["BU"] = df["BU"].astype(str).str.strip().str.upper()
+    # Si FECHA viene string -> datetime
+    try:
+        df["FECHA"] = pd.to_datetime(df["FECHA"], errors="coerce")
+    except Exception:
+        pass
+    return df
+
+@st.cache_data(show_spinner=False)
+def load_df_desplegables() -> pd.DataFrame:
+    return _load_parquet("datosdesplegables_actuar.parquet")  # BU, Id_Desplegable2/3, Valor_Desplegable2/3
+
+@st.cache_data(show_spinner=False)
+def load_df_multiples() -> pd.DataFrame:
+    return _load_parquet("datosmultiplesmejorasactuar.parquet")  # ID_MEJORA, Id_Seleccionado
+
+@st.cache_data(show_spinner=False)
+def load_df_mejoras() -> pd.DataFrame:
+    return _load_parquet("mejorasactuar.parquet")  # ID_MEJORA, BU, ID_USUARIO, FECHA, Titulo, Detalle
+
+@st.cache_data(show_spinner=False)
+def load_df_usuarios() -> pd.DataFrame:
+    return _load_parquet("usuarios.parquet")  # ID_USUARIO, USUARIO
 
 st.markdown("""
 <style>
@@ -195,6 +262,10 @@ def update_pdf_bytes():
 # 🔹 Conexión a la BBDD de Azure
 # =========================================================
 def crear_engine():
+    
+    if OFFLINE:
+        return None  # modo Parquet: no hay SQL
+    
     dialect = cfg("SQL_DIALECT", "pyodbc")  # en Streamlit Cloud pon 'pytds' en Secrets
 
     server   = cfg("SQL_SERVER")
@@ -232,28 +303,57 @@ def probar_conexion(engine):
         import traceback
         tb = ''.join(traceback.format_exc())
         return False, f"{repr(e)}\n{tb[-1200:]}"
+        
+def _resolver_mmg_desde_bu_y_mm(mm_bu: str, bu_ref: str) -> str|None:
+    """
+    Dado un 'micromomento' (como se llama en una BU concreta) y la BU de referencia,
+    devuelve el 'micromomento_global' asociado usando micromomentos_actuar.parquet.
+    """
+    dfm = load_df_micros()
+    bu_norm = str(bu_ref).strip().upper()
+    mm_norm = str(mm_bu).strip()
+    sub = dfm[
+        (dfm["bu"].astype(str).str.strip().str.upper() == bu_norm) &
+        (dfm["micromomento"].astype(str) == mm_norm)
+    ]
+    if sub.empty:
+        return None
+    return sub.iloc[0]["micromomento_global"]
 
 def obtener_micromomentos_por_bu(bu, eng):
-    try:
+    bu_norm = str(bu).strip().upper()
+    if eng is None:  # OFFLINE
+        df = load_df_micros()
+        mask = df["bu"].astype(str).str.strip().str.upper() == bu_norm
+        vals = (df.loc[mask, "micromomento"]
+                  .dropna().astype(str).str.strip().unique())
+        return sorted(vals.tolist())
+    else:  # SQL
         sql = text("""
             SELECT DISTINCT micromomento
             FROM dbo.Micromomentos_Actuar
             WHERE UPPER(LTRIM(RTRIM(bu))) = UPPER(LTRIM(RTRIM(:bu)))
             ORDER BY micromomento
         """)
-        df = pd.read_sql_query(sql, eng, params={"bu": bu})
-        return df["micromomento"].tolist() if not df.empty else []
-    except Exception as e:
-        st.warning(f"No se pudieron recuperar micromomentos para {bu}: {e}")
-        return []
+        df_sql = pd.read_sql_query(sql, eng, params={"bu": bu})
+        return df_sql["micromomento"].tolist() if not df_sql.empty else []
 
 def obtener_bus_por_micromomento(mm, bu_ref, eng):
-    """
-    Dado un micromomento 'mm' (texto BU-local) y una BU de referencia 'bu_ref',
-    encuentra su micromomento_global y devuelve la lista de BUs donde aparece.
-    """
-    try:
-        # 1) Resolver el micromomento_global a partir de (BU, micromomento)
+    if eng is None:  # OFFLINE
+        df = load_df_micros()
+        bu_norm = str(bu_ref).strip().upper()
+        mm_norm = str(mm).strip().upper()
+        sub = df[
+            (df["bu"].astype(str).str.strip().str.upper() == bu_norm) &
+            (df["micromomento"].astype(str).str.strip().str.upper() == mm_norm)
+        ].head(1)
+        if sub.empty:
+            return []
+        mmg = sub.iloc[0]["micromomento_global"]
+        vals = (df.loc[df["micromomento_global"] == mmg, "bu"]
+                  .dropna().astype(str).str.strip().unique())
+        return sorted(vals.tolist())
+    else:  # SQL
         sql1 = text("""
             SELECT TOP 1 micromomento_global
             FROM dbo.Micromomentos_Actuar
@@ -263,69 +363,161 @@ def obtener_bus_por_micromomento(mm, bu_ref, eng):
         df_sub = pd.read_sql_query(sql1, eng, params={"bu": bu_ref, "mm": mm})
         if df_sub.empty:
             return []
-
-        mm_global = df_sub.iloc[0]["micromomento_global"]
-
-        # 2) BUs donde aparece ese micromomento_global
+        mmg = df_sub.iloc[0]["micromomento_global"]
         sql2 = text("""
             SELECT DISTINCT bu
             FROM dbo.Micromomentos_Actuar
             WHERE micromomento_global = :mmg
             ORDER BY bu
         """)
-        df_bu = pd.read_sql_query(sql2, eng, params={"mmg": mm_global})
+        df_bu = pd.read_sql_query(sql2, eng, params={"mmg": mmg})
         return df_bu["bu"].tolist() if not df_bu.empty else []
-    except Exception as e:
-        st.warning(f"No se pudieron recuperar BUs para {mm}: {e}")
-        return []
 
-engine = None
+@st.cache_data(show_spinner=False)
+def obtener_improvements_offline(bu: str|None, micromomento: str|None) -> pd.DataFrame:
+    """
+    Usa únicamente mejorasactuar.parquet (con columnas: FECHA, BU, MICROMOMENTO, MICROMOMENTO_GLOBAL, MEJORA[, USUARIO]).
+    Casos:
+      1) mm y bu is None  -> micromomento en TODAS las BUs    => filtra por MICROMOMENTO_GLOBAL
+      2) mm y bu not None -> micromomento dentro de una BU    => filtra BU + MICROMOMENTO_GLOBAL
+      3) bu y mm is None  -> solo BU (todos los micromomentos) => filtra por BU
+    """
+    df = load_df_mejoras().copy()
+
+    # Limpieza básica
+    df = df[df["MEJORA"].notna()]  # evita nulos en la descripción
+    df["BU"] = df["BU"].astype(str).str.strip().str.upper()
+
+    bu_filter = bu.strip().upper() if isinstance(bu, str) and bu.strip() else None
+    mm_filter = micromomento.strip() if isinstance(micromomento, str) and micromomento.strip() else None
+
+    # Determinar micromomento_global cuando corresponda
+    mmg = None
+    if mm_filter:
+        # ¿Desde qué BU hay que resolver el 'mm_global'?
+        # - Si estamos en flujo "micros_por_bu", el mm viene ya de esa BU.
+        # - Si estamos en flujo "bus_por_mm", el mm se eligió desde la BU simulada.
+        bu_ref = None
+        if st.session_state.get("fase") == "micros_por_bu" and st.session_state.get("bu_seleccionada"):
+            bu_ref = st.session_state["bu_seleccionada"]
+        else:
+            bu_ref = st.session_state.get("bu_simulada") or st.session_state.get("bu_seleccionada")
+
+        mmg = _resolver_mmg_desde_bu_y_mm(mm_filter, bu_ref) if bu_ref else None
+
+    # Aplicar filtros por caso
+    if mm_filter and not bu_filter:
+        # Caso 1: micromomento en TODAS las BUs
+        if mmg:
+            df = df[df["MICROMOMENTO_GLOBAL"] == mmg]
+        else:
+            # Fallback por nombre exacto si no resolvemos mmg
+            df = df[df["MICROMOMENTO"] == mm_filter]
+
+    elif mm_filter and bu_filter:
+        # Caso 2: micromomento + BU concreta
+        df = df[df["BU"] == bu_filter]
+        if mmg:
+            df = df[df["MICROMOMENTO_GLOBAL"] == mmg]
+        else:
+            df = df[df["MICROMOMENTO"] == mm_filter]
+
+    elif bu_filter and not mm_filter:
+        # Caso 3: solo BU
+        df = df[df["BU"] == bu_filter]
+
+    # Orden final por fecha (si existe) y un id si lo hubiera
+    order_cols = [c for c in ["FECHA"] if c in df.columns]
+    df = df.sort_values(by=order_cols, ascending=False, na_position="last")
+
+    # === MODO DEMO: limitar a 100 aleatorias si hay muchas ===
+    total = len(df.index)
+    if total > 100:
+        df = df.sample(n=100, random_state=None).sort_index()
+        st.caption(f"Se han seleccionado aleatoriamente 100 improvements de las {total} disponibles (modo DEMO).")
+
+    return df.reset_index(drop=True)
+
+
+def _resolver_filtros_desde_estado():
+    """
+    Devuelve (bu_filter, mm_filter) según los estados:
+      - Caso 1: micromomento para TODAS las BUs  -> (None, mm)
+      - Caso 2: micromomento para una BU concreta -> (bu_mm, mm)
+      - Caso 3: solo BU (sin micromomento)       -> (bu, None)
+    Soporta valores ausentes y normaliza "todas".
+    """
+    mm = st.session_state.get("mm_seleccionado")
+    bu = st.session_state.get("bu_seleccionada")
+    bu_mm = st.session_state.get("bu_mm_seleccionada")  # puede ser "todas"
+
+    # Si viene del flujo de micromomento (tiene bu_mm_seleccionada)
+    if mm and bu_mm:
+        if isinstance(bu_mm, str) and bu_mm.strip().lower() == "todas":
+            return None, mm                   # Caso 1
+        else:
+            return bu_mm, mm                  # Caso 2
+
+    # Micromomento sin acotar a BU (por si no pasaste por la pregunta de acotación)
+    if mm and not bu_mm:
+        return None, mm                       # Caso 1 (implícito)
+
+    # Solo BU elegida, sin micromomento
+    if bu and not mm:
+        return bu, None                       # Caso 3
+
+    # Si por cualquier razón hay ambos pero sin bu_mm, prioriza el BU explícito
+    if bu and mm:
+        return bu, mm
+
+    # Nada aún seleccionado
+    return None, None
+
+
+# ====== Preparación de datos tras elegir BU simulada (SQL u OFFLINE) ======
+engine = crear_engine()
+# st.caption("Modo datos: OFFLINE (CSV/Parquet)" if engine is None else "Modo datos: SQL")
+
 if "bu_simulada" in st.session_state:
+    bu_sim = st.session_state["bu_simulada"]
     try:
-        # Crear engine
-        try:
-            engine = crear_engine()
-        except Exception as e:
-            st.error(f"Error creando engine: {repr(e)}")
-            engine = None
-        
-        # Diagnóstico (solo si no tenemos engine funcional)
-        if engine is None:
-            with st.expander("Diagnóstico SQL (temporal)"):
-                st.write("Dialecto:", cfg("SQL_DIALECT", "pyodbc"))
-                st.write("Servidor:", _mask(cfg("SQL_SERVER")))
-                st.write("BD:", cfg("SQL_DATABASE"))
-                st.write("Usuario:", _mask(cfg("SQL_USERNAME")))
-            st.stop()
-        
-        # Probar conexión
-        ok, msg = probar_conexion(engine)
-        if not ok:
-            st.error(f"Error al conectar con la base de datos:\n{msg}")
-            with st.expander("Diagnóstico SQL (temporal)"):
-                st.write("Dialecto:", cfg("SQL_DIALECT", "pyodbc"))
-                st.write("Servidor:", _mask(cfg("SQL_SERVER")))
-                st.write("BD:", cfg("SQL_DATABASE"))
-                st.write("Usuario:", _mask(cfg("SQL_USERNAME")))
-            st.stop()
+        if engine is not None:
+            # --- Rama SQL ---
+            ok, msg = probar_conexion(engine)
+            if not ok:
+                st.error(f"Error al conectar con la base de datos:\n{msg}")
+                with st.expander("Diagnóstico SQL (temporal)"):
+                    st.write("Dialecto:", cfg("SQL_DIALECT", "pyodbc"))
+                    st.write("Servidor:", _mask(cfg("SQL_SERVER")))
+                    st.write("BD:", cfg("SQL_DATABASE"))
+                    st.write("Usuario:", _mask(cfg("SQL_USERNAME")))
+                st.stop()
 
-        # Smoke test de conexión
-        with engine.connect() as conn:
-            ping = conn.exec_driver_sql("SELECT 1").scalar()
-            st.caption(f"Ping SQL (final): {ping}")
+            # Ping + probe (solo SQL)
+            with engine.connect() as conn:
+                ping = conn.exec_driver_sql("SELECT 1").scalar()
+                st.caption(f"Ping SQL (final): {ping}")
+            with engine.connect() as conn:
+                df_probe = pd.read_sql_query("SELECT TOP 5 * FROM dbo.Micromomentos_Actuar", conn)
+            st.caption(f"Probe Micromomentos_Actuar: filas={len(df_probe)} cols={list(df_probe.columns)}")
 
-        with engine.connect() as conn:
-            df_probe = pd.read_sql_query("SELECT TOP 5 * FROM micromomentos_actuar", conn)
-        st.caption(f"Probe micromomentos_actuar: filas={len(df_probe)} cols={list(df_probe.columns)}")
-            
-        missing = [k for k in ["SQL_SERVER","SQL_DATABASE","SQL_USERNAME","SQL_PASSWORD"] if not cfg(k)]
-        if missing:
-            st.warning(f"Faltan secretos de BBDD: {', '.join(missing)}")
-        st.session_state["micromomentos_simulada"] = obtener_micromomentos_por_bu(st.session_state["bu_simulada"], engine)
+            # Lista de micromomentos para la BU simulada (SQL)
+            st.session_state["micromomentos_simulada"] = obtener_micromomentos_por_bu(bu_sim, engine)
+
+        else:
+            # --- Rama OFFLINE (Parquet) ---
+            st.session_state["micromomentos_simulada"] = obtener_micromomentos_por_bu(bu_sim, None)
+
+        # Aviso si faltan secretos cuando estás en SQL
+        if engine is not None:
+            missing = [k for k in ["SQL_SERVER","SQL_DATABASE","SQL_USERNAME","SQL_PASSWORD"] if not cfg(k)]
+            if missing:
+                st.warning(f"Faltan secretos de BBDD: {', '.join(missing)}")
+
     except Exception as e:
         import traceback
         tb = ''.join(traceback.format_exc())
-        st.error(f"Error al conectar con la base de datos: {repr(e)}")
+        st.error(f"Error preparando datos: {repr(e)}")
         with st.expander("Diagnóstico SQL (temporal)"):
             st.write("Dialecto:", cfg("SQL_DIALECT", "pyodbc"))
             st.write("Servidor:", _mask(cfg("SQL_SERVER")))
@@ -337,7 +529,7 @@ if "bu_simulada" in st.session_state:
 # =========================================================
 # 🔹 Interfaz tipo "chat" por BOTONES (sin LLM)
 # =========================================================
-if "bu_simulada" in st.session_state and engine is not None:
+if "bu_simulada" in st.session_state:   # ✅ también en OFFLINE
 
     # Inicializar estados
     st.session_state.setdefault("chat_history", [])
@@ -526,179 +718,205 @@ if "bu_simulada" in st.session_state and engine is not None:
 # =========================================================
 if st.session_state.get("finalizado", False):
     try:
-        engine_final = crear_engine()
+        # Resuelve filtros de forma unificada (los 3 casos)
+        bu_filter, mm_filter = _resolver_filtros_desde_estado()
 
-        # Smoke test de conexión
-        with engine_final.connect() as conn:
-            ping = conn.exec_driver_sql("SELECT 1").scalar()
-            st.caption(f"Ping SQL (final): {ping}")
-            
-        missing = [k for k in ["SQL_SERVER","SQL_DATABASE","SQL_USERNAME","SQL_PASSWORD"] if not cfg(k)]
-        if missing:
-            st.warning(f"Faltan secretos de BBDD: {', '.join(missing)}")
+        if OFFLINE:
+            # ---------- OFFLINE (Parquet) ----------
+            df = obtener_improvements_offline(
+                bu=bu_filter,
+                micromomento=mm_filter
+            )
 
-        # ============================================
-        # Variables de contexto (robustas)
-        # ============================================
-        mm = (st.session_state.get("mm_seleccionado") or "").strip()
-        bu_focus = None
-        # Si el usuario acotó explícitamente tras elegir un micromomento:
-        if st.session_state.get("bu_mm_seleccionada") and st.session_state["bu_mm_seleccionada"] != "todas":
-            bu_focus = st.session_state["bu_mm_seleccionada"]
-        # Si el flujo fue al revés (primero BU y luego micromomento), usamos bu_seleccionada:
-        elif st.session_state.get("bu_seleccionada"):
-            bu_focus = st.session_state["bu_seleccionada"]
-
-        # BU de referencia para mapear micromomento_global cuando se pide "todas las BUs"
-        # (usa la que ya venías usando; si no existe, caemos a la simulada o a la de foco)
-        bu_ref_global = (
-            st.session_state.get("bu_preseleccionada")
-            or st.session_state.get("bu_simulada")
-            or bu_focus
-            or ""
-        )
-
-        # Sanitizar comillas simples por seguridad
-        def sql_safe(s: str) -> str:
-            return s.replace("'", "''") if isinstance(s, str) else s
-
-        mm_safe = sql_safe(mm or "")
-        bu_focus_safe = sql_safe(bu_focus or "")
-        bu_ref_global_safe = sql_safe(bu_ref_global or "")
-
-        # ============================================
-        # Caso 1: Micromomento en todas las BUs
-        # ============================================
-        if mm and st.session_state.get("bu_mm_seleccionada") == "todas":
-            query = f"""
-            DECLARE @MM_BU NVARCHAR(200), @BU NVARCHAR(200), @MM NVARCHAR(200), @MM_LIKE NVARCHAR(200);
-            SET @MM_BU='{mm_safe}';
-            SET @BU='{bu_ref_global_safe}';
-            SET @MM =(SELECT micromomento_global FROM micromomentos_actuar WHERE bu=@BU AND micromomento=@MM_BU);
-            SET @MM_LIKE ='%' +@MM+ '%';
-
-            SELECT @MM_BU AS micromomento, A.BU, LOWER(C.USUARIO) AS USUARIO, A.TITULO+': '+A.DETALLE AS MEJORA
-            FROM (
-                SELECT A1.*, A2.Micromomento
-                FROM (
-                    SELECT A.ID_MEJORA, UPPER(A.BU) AS BU, A.ID_USUARIO, A.FECHA, A.Titulo, A.Detalle,
-                           B.Id_Seleccionado AS Id_Desplegable
-                    FROM MEJORASACTUAR A
-                    LEFT JOIN DATOSMULTIPLESMEJORASACTUAR B ON A.ID_MEJORA = B.ID_MEJORA
-                    WHERE CAST(A.FECHA AS DATE)>=CAST(DATEADD(YEAR,-1,GETDATE()) AS DATE)
-                    --YEAR(A.FECHA) = 2025
-                      --AND MONTH(A.FECHA) BETWEEN 7 AND 9
-                      AND (
-                          (B.Id_Desplegable = 'Id_Desplegable3' AND A.BU IN ('HOSPITALES', 'DENTAL', 'MAYORES'))
-                          OR
-                          (B.Id_Desplegable = 'Id_Desplegable2' AND A.BU NOT IN ('HOSPITALES', 'DENTAL', 'MAYORES'))
-                      )
-                ) A1
-                LEFT JOIN (
-                    SELECT DISTINCT BU,
-                           CASE WHEN BU IN ('HOSPITALES', 'DENTAL', 'MAYORES') THEN Id_Desplegable3 ELSE Id_Desplegable2 END AS Id_Desplegable,
-                           CASE WHEN BU IN ('HOSPITALES', 'DENTAL', 'MAYORES') THEN Valor_Desplegable3 ELSE Valor_Desplegable2 END AS Micromomento
-                    FROM DATOSDESPLEGABLES_ACTUAR
-                ) A2 ON A1.BU = A2.BU AND A1.Id_Desplegable = A2.Id_Desplegable
-            ) A
-            RIGHT JOIN (SELECT * FROM Micromomentos_Actuar WHERE micromomento_global LIKE @MM_LIKE) B
-                ON A.BU=B.BU AND A.MICROMOMENTO=B.MICROMOMENTO
-            RIGHT JOIN (SELECT ID_USUARIO, USUARIO FROM USUARIOS) C
-                ON A.ID_USUARIO=C.ID_USUARIO
-            WHERE A.DETALLE IS NOT NULL
-            ORDER BY A.ID_MEJORA DESC;
-            """
-            df = pd.read_sql(query, engine_final)
-
-        # ============================================
-        # Caso 2: Micromomento para una BU concreta
-        # (acepta bu_mm_seleccionada o bu_seleccionada)
-        # ============================================
-        elif mm and bu_focus:
-            query = f"""
-            DECLARE @MM_BU NVARCHAR(200), @BU NVARCHAR(200), @MM NVARCHAR(200), @MM_LIKE NVARCHAR(200);
-            SET @MM_BU='{mm_safe}';
-            SET @BU='{bu_focus_safe}';
-            SET @MM =(SELECT micromomento_global FROM micromomentos_actuar WHERE bu=@BU AND micromomento=@MM_BU);
-            SET @MM_LIKE ='%' +@MM+ '%';
-
-            SELECT @MM_BU AS micromomento, A.BU, LOWER(C.USUARIO) AS USUARIO, A.TITULO+': '+A.DETALLE AS MEJORA
-            FROM (
-                SELECT A1.*, A2.Micromomento
-                FROM (
-                    SELECT A.ID_MEJORA, UPPER(A.BU) AS BU, A.ID_USUARIO, A.FECHA, A.Titulo, A.Detalle,
-                           B.Id_Seleccionado AS Id_Desplegable
-                    FROM MEJORASACTUAR A
-                    LEFT JOIN DATOSMULTIPLESMEJORASACTUAR B ON A.ID_MEJORA = B.ID_MEJORA
-                    WHERE CAST(A.FECHA AS DATE)>=CAST(DATEADD(YEAR,-1,GETDATE()) AS DATE)
-                    --YEAR(A.FECHA) = 2025
-                      --AND MONTH(A.FECHA) BETWEEN 7 AND 9
-                      AND A.BU=@BU
-                      AND (
-                          (B.Id_Desplegable = 'Id_Desplegable3' AND A.BU IN ('HOSPITALES', 'DENTAL', 'MAYORES'))
-                          OR
-                          (B.Id_Desplegable = 'Id_Desplegable2' AND A.BU NOT IN ('HOSPITALES', 'DENTAL', 'MAYORES'))
-                      )
-                ) A1
-                LEFT JOIN (
-                    SELECT DISTINCT BU,
-                           CASE WHEN BU IN ('HOSPITALES', 'DENTAL', 'MAYORES') THEN Id_Desplegable3 ELSE Id_Desplegable2 END AS Id_Desplegable,
-                           CASE WHEN BU IN ('HOSPITALES', 'DENTAL', 'MAYORES') THEN Valor_Desplegable3 ELSE Valor_Desplegable2 END AS Micromomento
-                    FROM DATOSDESPLEGABLES_ACTUAR
-                ) A2 ON A1.BU = A2.BU AND A1.Id_Desplegable = A2.Id_Desplegable
-            ) A
-            RIGHT JOIN (SELECT * FROM Micromomentos_Actuar WHERE micromomento_global LIKE @MM_LIKE) B
-                ON A.BU=B.BU AND A.MICROMOMENTO=B.MICROMOMENTO
-            RIGHT JOIN (SELECT ID_USUARIO, USUARIO FROM USUARIOS) C
-                ON A.ID_USUARIO=C.ID_USUARIO
-            WHERE A.DETALLE IS NOT NULL
-            ORDER BY A.ID_MEJORA DESC;
-            """
-            df = pd.read_sql(query, engine_final)
-
-        # ============================================
-        # Caso 3: Solo BU (todos los micromomentos de esa BU)
-        # ============================================
-        elif st.session_state.get("bu_seleccionada"):
-            bu_only = sql_safe(st.session_state["bu_seleccionada"])
-            query = f"""
-            DECLARE @BU NVARCHAR(200);
-            SET @BU='{bu_only}';
-
-            SELECT micromomento, A.BU, LOWER(C.USUARIO) AS USUARIO, A.TITULO+': '+A.DETALLE AS MEJORA
-            FROM (
-                SELECT A1.*, A2.Micromomento
-                FROM (
-                    SELECT A.ID_MEJORA, UPPER(A.BU) AS BU, A.ID_USUARIO, A.FECHA, A.Titulo, A.Detalle,
-                           B.Id_Seleccionado AS Id_Desplegable
-                    FROM MEJORASACTUAR A
-                    LEFT JOIN DATOSMULTIPLESMEJORASACTUAR B ON A.ID_MEJORA = B.ID_MEJORA
-                    WHERE CAST(A.FECHA AS DATE)>=CAST(DATEADD(YEAR,-1,GETDATE()) AS DATE)
-                    --YEAR(A.FECHA) = 2025
-                      --AND MONTH(A.FECHA) BETWEEN 7 AND 9
-                      AND A.BU=@BU
-                      AND (
-                          (B.Id_Desplegable = 'Id_Desplegable3' AND A.BU IN ('HOSPITALES', 'DENTAL', 'MAYORES'))
-                          OR
-                          (B.Id_Desplegable = 'Id_Desplegable2' AND A.BU NOT IN ('HOSPITALES', 'DENTAL', 'MAYORES'))
-                      )
-                ) A1
-                LEFT JOIN (
-                    SELECT DISTINCT BU,
-                           CASE WHEN BU IN ('HOSPITALES', 'DENTAL', 'MAYORES') THEN Id_Desplegable3 ELSE Id_Desplegable2 END AS Id_Desplegable,
-                           CASE WHEN BU IN ('HOSPITALES', 'DENTAL', 'MAYORES') THEN Valor_Desplegable3 ELSE Valor_Desplegable2 END AS Micromomento
-                    FROM DATOSDESPLEGABLES_ACTUAR
-                ) A2 ON A1.BU = A2.BU AND A1.Id_Desplegable = A2.Id_Desplegable
-            ) A
-            RIGHT JOIN (SELECT ID_USUARIO, USUARIO FROM USUARIOS) C
-                ON A.ID_USUARIO=C.ID_USUARIO
-            WHERE A.DETALLE IS NOT NULL
-            ORDER BY A.ID_MEJORA DESC;
-            """
-            df = pd.read_sql(query, engine_final)
+            # 1) Elimina mejoras sin detalle (como ya hacías en SQL)
+            if "Detalle" in df.columns:
+                df = df[df["Detalle"].notna()]
+        
+            # 2) Define la clave de “unicidad” de la mejora
+            if "ID_MEJORA" in df.columns:
+                key_cols = ["ID_MEJORA"]
+            else:
+                # Fallback si no hubiera ID: aproximamos por BU+Titulo+Detalle
+                key_cols = ["BU", "Titulo", "Detalle"]
+        
+            # 3) Cuenta únicas y, si hay >100, toma muestra aleatoria de *IDs únicos*
+            df_unique = df.drop_duplicates(subset=key_cols)
+            total_unique = len(df_unique)
+        
+            if total_unique > 75:
+                # Semilla estable por selección (opcional): cambia a None si la quieres cambiar cada rerun
+                # from hashlib import sha256
+                # seed = int(sha256(f"{bu_filter}|{mm_filter}".encode()).hexdigest()[:8], 16)
+                seed = None
+        
+                sampled_keys = (
+                    df_unique
+                    .sample(n=100, random_state=seed)
+                    [key_cols]
+                )
+        
+                # 4) Filtra el df original a esas mejoras únicas seleccionadas
+                df = df.merge(sampled_keys, on=key_cols, how="inner").reset_index(drop=True)
+        
+                # 5) Aviso
+                st.caption(f"Se han seleccionado aleatoriamente 75 improvements de las {total_unique} disponibles (modo DEMO).")
 
         else:
-            df = pd.DataFrame()
+            # ---------- SQL ----------
+            engine_final = crear_engine()
+            st.caption("Modo datos: SQL")
+
+            ok, msg = probar_conexion(engine_final)
+            if not ok:
+                st.error(f"Error al conectar con la base de datos:\n{msg}")
+                with st.expander("Diagnóstico SQL (temporal)"):
+                    st.write("Dialecto:", cfg("SQL_DIALECT", "pyodbc"))
+                    st.write("Servidor:", _mask(cfg("SQL_SERVER")))
+                    st.write("BD:", cfg("SQL_DATABASE"))
+                    st.write("Usuario:", _mask(cfg("SQL_USERNAME")))
+                st.stop()
+
+            # (Opcional) Ping
+            with engine_final.connect() as conn:
+                st.caption(f"Ping SQL (final): {conn.exec_driver_sql('SELECT 1').scalar()}")
+
+            # Sanitizar comillas para el SQL dinámico que ya tienes
+            def sql_safe(s: str) -> str:
+                return s.replace("'", "''") if isinstance(s, str) else s
+
+            mm = mm_filter or ""
+            bu_focus = bu_filter or ""
+            bu_ref_global = (
+                st.session_state.get("bu_preseleccionada")
+                or st.session_state.get("bu_simulada")
+                or bu_focus
+                or ""
+            )
+
+            mm_safe = sql_safe(mm)
+            bu_focus_safe = sql_safe(bu_focus)
+            bu_ref_global_safe = sql_safe(bu_ref_global)
+
+            if mm and not bu_focus:
+                # === Caso 1: micromomento en TODAS las BUs ===
+                query = f"""
+                DECLARE @MM_BU NVARCHAR(200), @BU NVARCHAR(200), @MM NVARCHAR(200), @MM_LIKE NVARCHAR(200);
+                SET @MM_BU='{mm_safe}';
+                SET @BU='{bu_ref_global_safe}';
+                SET @MM =(SELECT micromomento_global FROM micromomentos_actuar WHERE bu=@BU AND micromomento=@MM_BU);
+                SET @MM_LIKE ='%' +@MM+ '%';
+
+                SELECT @MM_BU AS micromomento, A.BU, LOWER(C.USUARIO) AS USUARIO, A.TITULO+': '+A.DETALLE AS MEJORA
+                FROM (
+                    SELECT A1.*, A2.Micromomento
+                    FROM (
+                        SELECT A.ID_MEJORA, UPPER(A.BU) AS BU, A.ID_USUARIO, A.FECHA, A.Titulo, A.Detalle,
+                               B.Id_Seleccionado AS Id_Desplegable
+                        FROM MEJORASACTUAR A
+                        LEFT JOIN DATOSMULTIPLESMEJORASACTUAR B ON A.ID_MEJORA = B.ID_MEJORA
+                        WHERE CAST(A.FECHA AS DATE)>=CAST(DATEADD(YEAR,-1,GETDATE()) AS DATE)
+                          AND (
+                              (B.Id_Desplegable = 'Id_Desplegable3' AND A.BU IN ('HOSPITALES', 'DENTAL', 'MAYORES'))
+                              OR
+                              (B.Id_Desplegable = 'Id_Desplegable2' AND A.BU NOT IN ('HOSPITALES', 'DENTAL', 'MAYORES'))
+                          )
+                    ) A1
+                    LEFT JOIN (
+                        SELECT DISTINCT BU,
+                               CASE WHEN BU IN ('HOSPITALES', 'DENTAL', 'MAYORES') THEN Id_Desplegable3 ELSE Id_Desplegable2 END AS Id_Desplegable,
+                               CASE WHEN BU IN ('HOSPITALES', 'DENTAL', 'MAYORES') THEN Valor_Desplegable3 ELSE Valor_Desplegable2 END AS Micromomento
+                        FROM DATOSDESPLEGABLES_ACTUAR
+                    ) A2 ON A1.BU = A2.BU AND A1.Id_Desplegable = A2.Id_Desplegable
+                ) A
+                RIGHT JOIN (SELECT * FROM Micromomentos_Actuar WHERE micromomento_global LIKE @MM_LIKE) B
+                    ON A.BU=B.BU AND A.MICROMOMENTO=B.MICROMOMENTO
+                RIGHT JOIN (SELECT ID_USUARIO, USUARIO FROM USUARIOS) C
+                    ON A.ID_USUARIO=C.ID_USUARIO
+                WHERE A.DETALLE IS NOT NULL
+                ORDER BY A.ID_MEJORA DESC;
+                """
+                df = pd.read_sql(query, engine_final)
+
+            elif mm and bu_focus:
+                # === Caso 2: micromomento + BU concreta ===
+                query = f"""
+                DECLARE @MM_BU NVARCHAR(200), @BU NVARCHAR(200), @MM NVARCHAR(200), @MM_LIKE NVARCHAR(200);
+                SET @MM_BU='{mm_safe}';
+                SET @BU='{bu_focus_safe}';
+                SET @MM =(SELECT micromomento_global FROM micromomentos_actuar WHERE bu=@BU AND micromomento=@MM_BU);
+                SET @MM_LIKE ='%' +@MM+ '%';
+
+                SELECT @MM_BU AS micromomento, A.BU, LOWER(C.USUARIO) AS USUARIO, A.TITULO+': '+A.DETALLE AS MEJORA
+                FROM (
+                    SELECT A1.*, A2.Micromomento
+                    FROM (
+                        SELECT A.ID_MEJORA, UPPER(A.BU) AS BU, A.ID_USUARIO, A.FECHA, A.Titulo, A.Detalle,
+                               B.Id_Seleccionado AS Id_Desplegable
+                        FROM MEJORASACTUAR A
+                        LEFT JOIN DATOSMULTIPLESMEJORASACTUAR B ON A.ID_MEJORA = B.ID_MEJORA
+                        WHERE CAST(A.FECHA AS DATE)>=CAST(DATEADD(YEAR,-1,GETDATE()) AS DATE)
+                          AND A.BU=@BU
+                          AND (
+                              (B.Id_Desplegable = 'Id_Desplegable3' AND A.BU IN ('HOSPITALES', 'DENTAL', 'MAYORES'))
+                              OR
+                              (B.Id_Desplegable = 'Id_Desplegable2' AND A.BU NOT IN ('HOSPITALES', 'DENTAL', 'MAYORES'))
+                          )
+                    ) A1
+                    LEFT JOIN (
+                        SELECT DISTINCT BU,
+                               CASE WHEN BU IN ('HOSPITALES', 'DENTAL', 'MAYORES') THEN Id_Desplegable3 ELSE Id_Desplegable2 END AS Id_Desplegable,
+                               CASE WHEN BU IN ('HOSPITALES', 'DENTAL', 'MAYORES') THEN Valor_Desplegable3 ELSE Valor_Desplegable2 END AS Micromomento
+                        FROM DATOSDESPLEGABLES_ACTUAR
+                    ) A2 ON A1.BU = A2.BU AND A1.Id_Desplegable = A2.Id_Desplegable
+                ) A
+                RIGHT JOIN (SELECT * FROM Micromomentos_Actuar WHERE micromomento_global LIKE @MM_LIKE) B
+                    ON A.BU=B.BU AND A.MICROMOMENTO=B.MICROMOMENTO
+                RIGHT JOIN (SELECT ID_USUARIO, USUARIO FROM USUARIOS) C
+                    ON A.ID_USUARIO=C.ID_USUARIO
+                WHERE A.DETALLE IS NOT NULL
+                ORDER BY A.ID_MEJORA DESC;
+                """
+                df = pd.read_sql(query, engine_final)
+
+            elif bu_focus and not mm:
+                # === Caso 3: solo BU ===
+                bu_only = sql_safe(bu_focus)
+                query = f"""
+                DECLARE @BU NVARCHAR(200);
+                SET @BU='{bu_only}';
+
+                SELECT micromomento, A.BU, LOWER(C.USUARIO) AS USUARIO, A.TITULO+': '+A.DETALLE AS MEJORA
+                FROM (
+                    SELECT A1.*, A2.Micromomento
+                    FROM (
+                        SELECT A.ID_MEJORA, UPPER(A.BU) AS BU, A.ID_USUARIO, A.FECHA, A.Titulo, A.Detalle,
+                               B.Id_Seleccionado AS Id_Desplegable
+                        FROM MEJORASACTUAR A
+                        LEFT JOIN DATOSMULTIPLESMEJORASACTUAR B ON A.ID_MEJORA = B.ID_MEJORA
+                        WHERE CAST(A.FECHA AS DATE)>=CAST(DATEADD(YEAR,-1,GETDATE()) AS DATE)
+                          AND A.BU=@BU
+                          AND (
+                              (B.Id_Desplegable = 'Id_Desplegable3' AND A.BU IN ('HOSPITALES', 'DENTAL', 'MAYORES'))
+                              OR
+                              (B.Id_Desplegable = 'Id_Desplegable2' AND A.BU NOT IN ('HOSPITALES', 'DENTAL', 'MAYORES'))
+                          )
+                    ) A1
+                    LEFT JOIN (
+                        SELECT DISTINCT BU,
+                               CASE WHEN BU IN ('HOSPITALES', 'DENTAL', 'MAYORES') THEN Id_Desplegable3 ELSE Id_Desplegable2 END AS Id_Desplegable,
+                               CASE WHEN BU IN ('HOSPITALES', 'DENTAL', 'MAYORES') THEN Valor_Desplegable3 ELSE Valor_Desplegable2 END AS Micromomento
+                        FROM DATOSDESPLEGABLES_ACTUAR
+                    ) A2 ON A1.BU = A2.BU AND A1.Id_Desplegable = A2.Id_Desplegable
+                ) A
+                RIGHT JOIN (SELECT ID_USUARIO, USUARIO FROM USUARIOS) C
+                    ON A.ID_USUARIO=C.ID_USUARIO
+                WHERE A.DETALLE IS NOT NULL
+                ORDER BY A.ID_MEJORA DESC;
+                """
+                df = pd.read_sql(query, engine_final)
+
+            else:
+                df = pd.DataFrame()
 
         if df.empty:
             st.info("No se encontraron Improvements para esta selección.")
