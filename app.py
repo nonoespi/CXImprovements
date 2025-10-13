@@ -355,80 +355,113 @@ def obtener_bus_por_micromomento(mm, bu_ref, eng):
         return df_bu["bu"].tolist() if not df_bu.empty else []
 
 @st.cache_data(show_spinner=False)
-def obtener_improvements_offline(bu: str|None, micromomento: str|None) -> pd.DataFrame:
+def obtener_improvements_offline(
+    bu: str | None,
+    micromomento: str | None,
+    bu_ref_global: str | None = None,   # 👈 NUEVO: BU de referencia para resolver micromomento_global
+) -> pd.DataFrame:
     """
-    Junta:
-      - mejorasactuar (ID_MEJORA, BU, ID_USUARIO, FECHA, Titulo, Detalle)
-      - datosmultiplesmejorasactuar (ID_MEJORA, Id_Seleccionado)
-      - datosdesplegables_actuar (BU, Id_Desplegable2/3, Valor_Desplegable2/3)
-    Y aplica la misma lógica que el SQL:
-      * Si BU in ('HOSPITALES','DENTAL','MAYORES') => micromomento = Valor_Desplegable3 y join por Id_Desplegable3
-      * En caso contrario => micromomento = Valor_Desplegable2 y join por Id_Desplegable2
+    Replica la lógica SQL:
+      - Join MEJORASACTUAR + DATOSMULTIPLESMEJORASACTUAR + DATOSDESPLEGABLES_ACTUAR
+      - Selección de Id_Desplegable2/3 y Valor_Desplegable2/3 según BU especial ('HOSPITALES','DENTAL','MAYORES')
+      - Filtro temporal (último año)
+      - Si hay micromomento (mm) sin BU => mapear a micromomento_global usando BU de referencia y traer TODAS las BUs del mismo grupo global
+      - Si mm + BU => igual, pero acotando a esa BU
+      - Si solo BU => solo filtra por BU
     """
     # --- Cargar datasets ---
     mejoras = load_df_mejoras().copy()
     multiples = load_df_multiples().copy()
-    despl = load_df_desplegables().copy()
+    despl    = load_df_desplegables().copy()
+    micros   = load_df_micros().copy()  # bu, micromomento, micromomento_global
 
-    # Normalizaciones ligeras
-    for c in ["BU"]:
-        if c in mejoras.columns:
-            mejoras[c] = mejoras[c].astype(str).str.strip().str.upper()
-        if c in despl.columns:
-            despl[c] = despl[c].astype(str).str.strip().str.upper()
+    # Normalizaciones
+    if "BU" in mejoras.columns:
+        mejoras["BU"] = mejoras["BU"].astype(str).str.strip().str.upper()
+    if "BU" in despl.columns:
+        despl["BU"] = despl["BU"].astype(str).str.strip().str.upper()
+    micros["bu"] = micros["bu"].astype(str).str.strip().str.upper()
+    micros["micromomento"] = micros["micromomento"].astype(str).str.strip()
+    micros["micromomento_global"] = micros["micromomento_global"].astype(str).str.strip()
 
-    # (Opcional) filtrar últimas mejoras si tu parquet no venía acotado por fecha
-    # mejoras["FECHA"] = pd.to_datetime(mejoras["FECHA"], errors="coerce")
-
-    # --- A2: por cada fila de desplegables, decidir qué Id_Desplegable y qué Micromomento usar ---
+    # --- Elegir para cada BU su Id_Desplegable y valor de micromomento (A2) ---
     especiales = {"HOSPITALES", "DENTAL", "MAYORES"}
     mask_esp = despl["BU"].isin(especiales)
-
     A2 = pd.DataFrame({
         "BU": despl["BU"],
-        # Id_Desplegable que toca para esa BU
         "Id_Desplegable": despl["Id_Desplegable2"].where(~mask_esp, despl["Id_Desplegable3"]),
-        # Micromomento (valor) que toca para esa BU
         "Micromomento":   despl["Valor_Desplegable2"].where(~mask_esp, despl["Valor_Desplegable3"]),
     })
 
-    # --- A1: mejoras + múltiples (para tener el Id_Seleccionado) ---
+    # --- Mejoras + múltiples (A1) ---
     A1 = mejoras.merge(multiples, on="ID_MEJORA", how="left")
 
-    # --- A: join por BU y por Id_Seleccionado ↔ Id_Desplegable ---
-    A = A1.merge(
-        A2,
-        left_on=["BU", "Id_Seleccionado"],
-        right_on=["BU", "Id_Desplegable"],
-        how="left"
-    )
+    # --- Join por BU y Id_Seleccionado ↔ Id_Desplegable (A) ---
+    A = A1.merge(A2, left_on=["BU", "Id_Seleccionado"],
+                    right_on=["BU", "Id_Desplegable"], how="left")
 
-    # Limpieza básica
-    if "Detalle" in A.columns:
-        A = A[~A["Detalle"].isna()]
+    # --- Filtro temporal (último año), igual que en SQL ---
+    # En tus queries: CAST(A.FECHA AS DATE) >= DATEADD(YEAR,-1,GETDATE())
+    if "FECHA" in A.columns:
+        A["FECHA"] = pd.to_datetime(A["FECHA"], errors="coerce")
+        from datetime import datetime, timedelta
+        cutoff = pd.Timestamp(datetime.now() - timedelta(days=365)).normalize()
+        A = A[(A["FECHA"].isna()) | (A["FECHA"].dt.date >= cutoff.date())]
 
-    # --- Filtros solicitados ---
+    # --- Resolver filtros en función de mm/bu ---
+    # Caso 1 y 2: hay micromomento => mapear a micromomento_global usando bu_ref_global
     if micromomento:
         mm_norm = str(micromomento).strip().upper()
-        A = A[A["Micromomento"].astype(str).str.strip().str.upper() == mm_norm]
+        # BU de referencia: simulada si no se pasa explícita
+        bu_ref = (bu_ref_global or st.session_state.get("bu_simulada", "") or "").strip().upper()
 
+        # Buscar micromomento_global de referencia
+        sub_ref = micros[
+            (micros["bu"] == bu_ref) &
+            (micros["micromomento"].str.upper() == mm_norm)
+        ].head(1)
+        if not sub_ref.empty:
+            mmg_ref = sub_ref.iloc[0]["micromomento_global"]
+            mmg_ref_norm = str(mmg_ref).strip().upper()
+
+            # Todas las (bu, micromomento) cuyo micromomento_global LIKE mmg_ref
+            micros_like = micros[
+                micros["micromomento_global"].str.upper().str.contains(mmg_ref_norm, na=False)
+            ]
+            # Lista de micromomentos “locales” equivalentes
+            mms_equivalentes = set(micros_like["micromomento"].astype(str).str.strip())
+
+            # Filtramos A por esos micromomentos equivalentes
+            A = A[A["Micromomento"].astype(str).str.strip().isin(mms_equivalentes)]
+
+        else:
+            # Si no encontramos mapping, caemos al filtro exacto (mejor que nada)
+            A = A[A["Micromomento"].astype(str).str.strip().str.upper() == mm_norm]
+
+    # Filtro por BU (si procede)
     if bu:
         bu_norm = str(bu).strip().upper()
         A = A[A["BU"].astype(str).str.strip().str.upper() == bu_norm]
 
-    # --- (Opcional) enriquecer con nombre de usuario ---
+    # --- Enriquecer con USUARIO (lower) si está disponible ---
     try:
         usuarios = load_df_usuarios()
         A = A.merge(usuarios, on="ID_USUARIO", how="left")
+        if "USUARIO" in A.columns:
+            A["USUARIO"] = A["USUARIO"].astype(str).str.lower()
     except Exception:
         pass
 
+    # --- Quitar mejoras sin detalle (como en SQL) ---
+    if "Detalle" in A.columns:
+        A = A[A["Detalle"].notna()]
+
     # --- Selección/orden final ---
-    cols_out = [c for c in [
-        "ID_MEJORA", "BU", "USUARIO", "FECHA", "Titulo", "Detalle", "Micromomento"
-    ] if c in A.columns]
-    A = A[cols_out].sort_values(by=[c for c in ["FECHA","ID_MEJORA"] if c in A.columns],
-                                ascending=False, na_position="last")
+    cols_out = [c for c in ["ID_MEJORA","BU","USUARIO","FECHA","Titulo","Detalle","Micromomento"] if c in A.columns]
+    A = A[cols_out].sort_values(
+        by=[c for c in ["FECHA","ID_MEJORA"] if c in A.columns],
+        ascending=False, na_position="last"
+    ).reset_index(drop=True)
 
     return A
 
@@ -1175,5 +1208,6 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
