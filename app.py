@@ -328,7 +328,7 @@ def obtener_bus_por_micromomento(mm, bu_ref, eng):
         df_bu = pd.read_sql_query(sql2, eng, params={"mmg": mmg})
         return df_bu["bu"].tolist() if not df_bu.empty else []
 
-@st.cache_data(show_spinner=True)
+@st.cache_data(show_spinner=False)
 def obtener_improvements_offline(bu: str|None, micromomento: str|None) -> pd.DataFrame:
     """
     Junta:
@@ -444,7 +444,7 @@ def _resolver_filtros_desde_estado():
 
 # ====== Preparación de datos tras elegir BU simulada (SQL u OFFLINE) ======
 engine = crear_engine()
-st.caption("Modo datos: OFFLINE (CSV/Parquet)" if engine is None else "Modo datos: SQL")
+# st.caption("Modo datos: OFFLINE (CSV/Parquet)" if engine is None else "Modo datos: SQL")
 
 if "bu_simulada" in st.session_state:
     bu_sim = st.session_state["bu_simulada"]
@@ -1085,6 +1085,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
