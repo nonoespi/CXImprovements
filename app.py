@@ -359,6 +359,42 @@ def obtener_improvements_offline(bu: str|None, micromomento: str|None) -> pd.Dat
                             "Valor_Desplegable2","Valor_Desplegable3"] if c in j.columns]
     return j[cols_out].sort_values(by="FECHA", ascending=False, na_position="last")
 
+
+def _resolver_filtros_desde_estado():
+    """
+    Devuelve (bu_filter, mm_filter) según los estados:
+      - Caso 1: micromomento para TODAS las BUs  -> (None, mm)
+      - Caso 2: micromomento para una BU concreta -> (bu_mm, mm)
+      - Caso 3: solo BU (sin micromomento)       -> (bu, None)
+    Soporta valores ausentes y normaliza "todas".
+    """
+    mm = st.session_state.get("mm_seleccionado")
+    bu = st.session_state.get("bu_seleccionada")
+    bu_mm = st.session_state.get("bu_mm_seleccionada")  # puede ser "todas"
+
+    # Si viene del flujo de micromomento (tiene bu_mm_seleccionada)
+    if mm and bu_mm:
+        if isinstance(bu_mm, str) and bu_mm.strip().lower() == "todas":
+            return None, mm                   # Caso 1
+        else:
+            return bu_mm, mm                  # Caso 2
+
+    # Micromomento sin acotar a BU (por si no pasaste por la pregunta de acotación)
+    if mm and not bu_mm:
+        return None, mm                       # Caso 1 (implícito)
+
+    # Solo BU elegida, sin micromomento
+    if bu and not mm:
+        return bu, None                       # Caso 3
+
+    # Si por cualquier razón hay ambos pero sin bu_mm, prioriza el BU explícito
+    if bu and mm:
+        return bu, mm
+
+    # Nada aún seleccionado
+    return None, None
+
+
 engine = None
 if "bu_simulada" in st.session_state:
     try:
@@ -1014,6 +1050,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
