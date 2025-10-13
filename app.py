@@ -696,10 +696,38 @@ if st.session_state.get("finalizado", False):
                 micromomento=mm_filter
             )
 
-            total_before = len(df)
-            if total_before > 100:
-                df = df.sample(n=100, random_state=None).reset_index(drop=True)
-                st.caption(f"Se han seleccionado aleatoriamente 100 improvements de {total_before} disponibles.")
+            # 1) Elimina mejoras sin detalle (como ya hacías en SQL)
+            if "Detalle" in df.columns:
+                df = df[df["Detalle"].notna()]
+        
+            # 2) Define la clave de “unicidad” de la mejora
+            if "ID_MEJORA" in df.columns:
+                key_cols = ["ID_MEJORA"]
+            else:
+                # Fallback si no hubiera ID: aproximamos por BU+Titulo+Detalle
+                key_cols = ["BU", "Titulo", "Detalle"]
+        
+            # 3) Cuenta únicas y, si hay >100, toma muestra aleatoria de *IDs únicos*
+            df_unique = df.drop_duplicates(subset=key_cols)
+            total_unique = len(df_unique)
+        
+            if total_unique > 100:
+                # Semilla estable por selección (opcional): cambia a None si la quieres cambiar cada rerun
+                # from hashlib import sha256
+                # seed = int(sha256(f"{bu_filter}|{mm_filter}".encode()).hexdigest()[:8], 16)
+                seed = None
+        
+                sampled_keys = (
+                    df_unique
+                    .sample(n=100, random_state=seed)
+                    [key_cols]
+                )
+        
+                # 4) Filtra el df original a esas mejoras únicas seleccionadas
+                df = df.merge(sampled_keys, on=key_cols, how="inner").reset_index(drop=True)
+        
+                # 5) Aviso
+                st.caption(f"Se han seleccionado aleatoriamente 100 improvements únicas de {total_unique} disponibles (modo OFFLINE).")
 
         else:
             # ---------- SQL ----------
@@ -1090,6 +1118,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
