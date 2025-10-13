@@ -856,6 +856,10 @@ if st.session_state.get("finalizado", False):
         if df.empty:
             st.info("No se encontraron Improvements para esta selección.")
 
+        # --- Cap de 100 SOLO en OFFLINE (muestra una muestra aleatoria) ---
+        if OFFLINE and len(df) > 100:
+            df = df.sample(n=100, random_state=None).reset_index(drop=True)
+
     except Exception as e:
         st.error(f"Error al recuperar Improvements: {e}")
 
@@ -1085,6 +1089,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
