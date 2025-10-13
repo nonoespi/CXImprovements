@@ -330,34 +330,81 @@ def obtener_bus_por_micromomento(mm, bu_ref, eng):
 
 @st.cache_data(show_spinner=True)
 def obtener_improvements_offline(bu: str|None, micromomento: str|None) -> pd.DataFrame:
-    mejoras = load_df_mejoras()
-    multiples = load_df_multiples()
-    despl = load_df_desplegables()
+    """
+    Junta:
+      - mejorasactuar (ID_MEJORA, BU, ID_USUARIO, FECHA, Titulo, Detalle)
+      - datosmultiplesmejorasactuar (ID_MEJORA, Id_Seleccionado)
+      - datosdesplegables_actuar (BU, Id_Desplegable2/3, Valor_Desplegable2/3)
+    Y aplica la misma lógica que el SQL:
+      * Si BU in ('HOSPITALES','DENTAL','MAYORES') => micromomento = Valor_Desplegable3 y join por Id_Desplegable3
+      * En caso contrario => micromomento = Valor_Desplegable2 y join por Id_Desplegable2
+    """
+    # --- Cargar datasets ---
+    mejoras = load_df_mejoras().copy()
+    multiples = load_df_multiples().copy()
+    despl = load_df_desplegables().copy()
 
-    j = multiples.merge(
-        despl, left_on="Id_Seleccionado", right_on="Id_Desplegable3", how="inner"
-    ).merge(
-        mejoras, on="ID_MEJORA", how="inner"
+    # Normalizaciones ligeras
+    for c in ["BU"]:
+        if c in mejoras.columns:
+            mejoras[c] = mejoras[c].astype(str).str.strip().str.upper()
+        if c in despl.columns:
+            despl[c] = despl[c].astype(str).str.strip().str.upper()
+
+    # (Opcional) filtrar últimas mejoras si tu parquet no venía acotado por fecha
+    # mejoras["FECHA"] = pd.to_datetime(mejoras["FECHA"], errors="coerce")
+
+    # --- A2: por cada fila de desplegables, decidir qué Id_Desplegable y qué Micromomento usar ---
+    especiales = {"HOSPITALES", "DENTAL", "MAYORES"}
+    mask_esp = despl["BU"].isin(especiales)
+
+    A2 = pd.DataFrame({
+        "BU": despl["BU"],
+        # Id_Desplegable que toca para esa BU
+        "Id_Desplegable": despl["Id_Desplegable2"].where(~mask_esp, despl["Id_Desplegable3"]),
+        # Micromomento (valor) que toca para esa BU
+        "Micromomento":   despl["Valor_Desplegable2"].where(~mask_esp, despl["Valor_Desplegable3"]),
+    })
+
+    # --- A1: mejoras + múltiples (para tener el Id_Seleccionado) ---
+    A1 = mejoras.merge(multiples, on="ID_MEJORA", how="left")
+
+    # --- A: join por BU y por Id_Seleccionado ↔ Id_Desplegable ---
+    A = A1.merge(
+        A2,
+        left_on=["BU", "Id_Seleccionado"],
+        right_on=["BU", "Id_Desplegable"],
+        how="left"
     )
 
+    # Limpieza básica
+    if "Detalle" in A.columns:
+        A = A[~A["Detalle"].isna()]
+
+    # --- Filtros solicitados ---
     if micromomento:
         mm_norm = str(micromomento).strip().upper()
-        j = j[j["Valor_Desplegable3"].astype(str).str.strip().str.upper() == mm_norm]
+        A = A[A["Micromomento"].astype(str).str.strip().str.upper() == mm_norm]
 
     if bu:
         bu_norm = str(bu).strip().upper()
-        j = j[j["Valor_Desplegable2"].astype(str).str.strip().str.upper() == bu_norm]
+        A = A[A["BU"].astype(str).str.strip().str.upper() == bu_norm]
 
-    # Traer nombre de usuario si existe
+    # --- (Opcional) enriquecer con nombre de usuario ---
     try:
         usuarios = load_df_usuarios()
-        j = j.merge(usuarios, on="ID_USUARIO", how="left")
+        A = A.merge(usuarios, on="ID_USUARIO", how="left")
     except Exception:
         pass
 
-    cols_out = [c for c in ["ID_MEJORA","BU","USUARIO","FECHA","Titulo","Detalle",
-                            "Valor_Desplegable2","Valor_Desplegable3"] if c in j.columns]
-    return j[cols_out].sort_values(by="FECHA", ascending=False, na_position="last")
+    # --- Selección/orden final ---
+    cols_out = [c for c in [
+        "ID_MEJORA", "BU", "USUARIO", "FECHA", "Titulo", "Detalle", "Micromomento"
+    ] if c in A.columns]
+    A = A[cols_out].sort_values(by=[c for c in ["FECHA","ID_MEJORA"] if c in A.columns],
+                                ascending=False, na_position="last")
+
+    return A
 
 
 def _resolver_filtros_desde_estado():
@@ -1038,6 +1085,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
