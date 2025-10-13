@@ -106,23 +106,45 @@ def load_df_micros() -> pd.DataFrame:
 @st.cache_data(show_spinner=False)
 def load_df_mejoras() -> pd.DataFrame:
     """
-    Este parquet ya viene consolidado de SQL con las columnas:
-    FECHA, BU, MICROMOMENTO, MICROMOMENTO_GLOBAL, USUARIO (opcional), MEJORA
+    Carga el parquet consolidado y normaliza el esquema a:
+    FECHA (datetime), BU (UPPER), MICROMOMENTO, MICROMOMENTO_GLOBAL, MEJORA, USUARIO (opcional)
+    Adapta también si vienen TITULO/DETALLE en vez de MEJORA.
     """
     df = _load_parquet("mejorasactuar.parquet")
-    # Normaliza nombres en mayúsculas por seguridad:
+
+    # Normaliza nombres
     df.columns = [c.upper() for c in df.columns]
-    # Asegura columnas clave (algunas demos no incluyen USUARIO):
-    for col in ["FECHA","BU","MICROMOMENTO","MICROMOMENTO_GLOBAL","MEJORA"]:
+
+    # Si no hay MEJORA pero sí TITULO/DETALLE, la construimos
+    if "MEJORA" not in df.columns:
+        titulo = df["TITULO"] if "TITULO" in df.columns else ""
+        detalle = df["DETALLE"] if "DETALLE" in df.columns else ""
+        df["MEJORA"] = (
+            titulo.fillna("").astype(str).str.strip()
+            + np.where((titulo.notna()) & (detalle.notna()), ": ", "")
+            + detalle.fillna("").astype(str).str.strip()
+        )
+
+    # Asegura columnas clave
+    for col in ["FECHA", "BU", "MICROMOMENTO", "MICROMOMENTO_GLOBAL", "MEJORA"]:
         if col not in df.columns:
             df[col] = None
-    # Homogeneiza BU (espacios, mayúsculas)
-    df["BU"] = df["BU"].astype(str).str.strip().str.upper()
-    # Si FECHA viene string -> datetime
+
+    # Tipificados / limpieza
     try:
         df["FECHA"] = pd.to_datetime(df["FECHA"], errors="coerce")
     except Exception:
         pass
+
+    df["BU"] = df["BU"].astype(str).str.strip().str.upper()
+    df["MICROMOMENTO"] = df["MICROMOMENTO"].astype(str).str.strip()
+    df["MICROMOMENTO_GLOBAL"] = df["MICROMOMENTO_GLOBAL"].astype(str).str.strip()
+    df["MEJORA"] = df["MEJORA"].astype(str).str.strip()
+
+    # (Opcional) USUARIO a lower si existe
+    if "USUARIO" in df.columns and df["USUARIO"].dtype == object:
+        df["USUARIO"] = df["USUARIO"].astype(str).str.strip().str.lower()
+
     return df
 
 @st.cache_data(show_spinner=False)
@@ -132,10 +154,6 @@ def load_df_desplegables() -> pd.DataFrame:
 @st.cache_data(show_spinner=False)
 def load_df_multiples() -> pd.DataFrame:
     return _load_parquet("datosmultiplesmejorasactuar.parquet")  # ID_MEJORA, Id_Seleccionado
-
-@st.cache_data(show_spinner=False)
-def load_df_mejoras() -> pd.DataFrame:
-    return _load_parquet("mejorasactuar.parquet")  # ID_MEJORA, BU, ID_USUARIO, FECHA, Titulo, Detalle
 
 @st.cache_data(show_spinner=False)
 def load_df_usuarios() -> pd.DataFrame:
@@ -385,7 +403,7 @@ def obtener_improvements_offline(bu: str|None, micromomento: str|None) -> pd.Dat
     df = load_df_mejoras().copy()
 
     # Limpieza básica
-    df = df[df["MEJORA"].notna()]  # evita nulos en la descripción
+    df = df[df["MEJORA"].notna() & (df["MEJORA"].astype(str).str.strip() != "")]
     df["BU"] = df["BU"].astype(str).str.strip().str.upper()
 
     bu_filter = bu.strip().upper() if isinstance(bu, str) and bu.strip() else None
@@ -426,15 +444,21 @@ def obtener_improvements_offline(bu: str|None, micromomento: str|None) -> pd.Dat
         # Caso 3: solo BU
         df = df[df["BU"] == bu_filter]
 
-    # Orden final por fecha (si existe) y un id si lo hubiera
+    # Orden final por fecha
     order_cols = [c for c in ["FECHA"] if c in df.columns]
     df = df.sort_values(by=order_cols, ascending=False, na_position="last")
 
-    # === MODO DEMO: limitar a 100 aleatorias si hay muchas ===
-    total = len(df.index)
-    if total > 100:
-        df = df.sample(n=100, random_state=None).sort_index()
-        st.caption(f"Se han seleccionado aleatoriamente 100 improvements de las {total} disponibles (modo DEMO).")
+    # === MODO DEMO: únicos + muestreo ===
+    if "ID_MEJORA" in df.columns:
+        key_cols = ["ID_MEJORA"]
+    else:
+        # Fallback estable por contenido (evita depender de TITULO/DETALLE)
+        key_cols = ["BU", "MICROMOMENTO_GLOBAL", "MEJORA"]
+
+    df_unique = df.drop_duplicates(subset=key_cols)
+    total_unique = len(df_unique)
+
+    st.caption(f"Se han cargado {total_unique} Improvements disponibles (modo DEMO).")
 
     return df.reset_index(drop=True)
 
@@ -727,39 +751,6 @@ if st.session_state.get("finalizado", False):
                 bu=bu_filter,
                 micromomento=mm_filter
             )
-
-            # 1) Elimina mejoras sin detalle (como ya hacías en SQL)
-            if "Detalle" in df.columns:
-                df = df[df["Detalle"].notna()]
-        
-            # 2) Define la clave de “unicidad” de la mejora
-            if "ID_MEJORA" in df.columns:
-                key_cols = ["ID_MEJORA"]
-            else:
-                # Fallback si no hubiera ID: aproximamos por BU+Titulo+Detalle
-                key_cols = ["BU", "Titulo", "Detalle"]
-        
-            # 3) Cuenta únicas y, si hay >100, toma muestra aleatoria de *IDs únicos*
-            df_unique = df.drop_duplicates(subset=key_cols)
-            total_unique = len(df_unique)
-        
-            if total_unique > 75:
-                # Semilla estable por selección (opcional): cambia a None si la quieres cambiar cada rerun
-                # from hashlib import sha256
-                # seed = int(sha256(f"{bu_filter}|{mm_filter}".encode()).hexdigest()[:8], 16)
-                seed = None
-        
-                sampled_keys = (
-                    df_unique
-                    .sample(n=100, random_state=seed)
-                    [key_cols]
-                )
-        
-                # 4) Filtra el df original a esas mejoras únicas seleccionadas
-                df = df.merge(sampled_keys, on=key_cols, how="inner").reset_index(drop=True)
-        
-                # 5) Aviso
-                st.caption(f"Se han seleccionado aleatoriamente 75 improvements de las {total_unique} disponibles (modo DEMO).")
 
         else:
             # ---------- SQL ----------
@@ -1150,3 +1141,4 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
