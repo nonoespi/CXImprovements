@@ -9,4 +9,5 @@ reportlab
 certifi
 pyOpenSSL
 cryptography
+pyarrow
 # pyodbc   <- solo para tu local, opcional
