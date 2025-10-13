@@ -450,7 +450,7 @@ if "bu_simulada" in st.session_state:
 # =========================================================
 # 🔹 Interfaz tipo "chat" por BOTONES (sin LLM)
 # =========================================================
-if "bu_simulada" in st.session_state and engine is not None:
+if "bu_simulada" in st.session_state:   # ✅ también en OFFLINE
 
     # Inicializar estados
     st.session_state.setdefault("chat_history", [])
@@ -1038,6 +1038,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
