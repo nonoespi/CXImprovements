@@ -711,7 +711,7 @@ if st.session_state.get("finalizado", False):
             df_unique = df.drop_duplicates(subset=key_cols)
             total_unique = len(df_unique)
         
-            if total_unique > 100:
+            if total_unique > 200:
                 # Semilla estable por selección (opcional): cambia a None si la quieres cambiar cada rerun
                 # from hashlib import sha256
                 # seed = int(sha256(f"{bu_filter}|{mm_filter}".encode()).hexdigest()[:8], 16)
@@ -1118,6 +1118,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
