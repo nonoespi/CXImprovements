@@ -8,7 +8,7 @@ from sqlalchemy import text
 import urllib
 import json
 from openai import AzureOpenAI
-import time
+import time, random, hashlib
 from io import BytesIO
 from datetime import datetime
 import base64
@@ -27,6 +27,32 @@ def _mask(v, keep=3):
     if not v: return ""
     v = str(v)
     return v[:keep] + "…" if len(v) > keep else "…"
+
+def _hash_llm_key(*parts) -> str:
+    h = hashlib.sha256()
+    for p in parts:
+        h.update(str(p).encode("utf-8")); h.update(b"|")
+    return h.hexdigest()
+
+def llm_chat_with_retry(client, deployment, messages, *, max_tokens=None, temperature=None, retries=3):
+    delay = 3.0
+    last = None
+    for i in range(retries):
+        try:
+            return client.chat.completions.create(
+                model=deployment,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+        except Exception as e:
+            msg = str(e).lower(); last = e
+            if ("429" in msg) or ("rate limit" in msg) or ("too many requests" in msg):
+                if i == retries - 1: break
+                time.sleep(delay + random.uniform(0, 1.5)); delay *= 2
+            else:
+                break
+    raise last
 
 # 🔹 Siempre limpiar cachés al arrancar
 st.cache_data.clear()
@@ -898,114 +924,141 @@ if st.session_state.get("finalizado", False):
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # ---- Llamada a Azure OpenAI ----
+        # ---- Llamada a Azure OpenAI (con backoff + caché por selección) ----
         client = AzureOpenAI(
             api_key=cfg("AZURE_OPENAI_API_KEY"),
             api_version=cfg("AZURE_OPENAI_API_VERSION"),
             azure_endpoint=cfg("AZURE_OPENAI_ENDPOINT"),
         )
         deployment = cfg("AZURE_OPENAI_DEPLOYMENT")
-
+        
+        # Clave estable por selección (BU/MM) para evitar llamadas duplicadas por rerun
+        bu_key = st.session_state.get("bu_mm_seleccionada") or st.session_state.get("bu_seleccionada") or "todas"
+        mm_key = st.session_state.get("mm_seleccionado") or ""
+        llm_key = _hash_llm_key(bu_key, mm_key)
+        
         micromomento = st.session_state.get("mm_seleccionado") or "N/A"
-        historico = st.session_state.get("historico_mejoras", [])
-
-        system_prompt = f"""
-        Eres un asesor experto de Bupa, referente internacional en gestión y optimización de la experiencia de cliente (CX Improvements). Tu función es:
-
-        1. Recepcionar un micromomento seleccionado por el usuario (de una lista dada).
-        2. Analizar el histórico completo de Improvements implementadas, que incluye:
-           - BU (Business Unit) asociado.
-           - Micromomentos impactados (uno o varios por acción).
-           - Usuario que propuso cada acción.
-        3. Extraer aprendizajes clave de las iniciativas previas.
-        4. Generar hasta 5 Improvements originales y accionables:
-           - No repetir literalmente acciones pasadas.
-           - Ser innovador, concreto y adaptado al contexto internacional de Bupa.
-           - Para cada sugerencia, indicar el beneficio, público objetivo o enfoque diferencial.
-        5. Identificación de usuarios inspiradores:
-           - Este paso **solo debe realizarse si el usuario lo solicita explícitamente**.
-           - En ningún caso debes mencionarlo, insinuarlo ni ofrecerlo de manera proactiva.
-           - Si el usuario lo pide, busca en el histórico acciones similares ya implementadas y muestra, como máximo, 3 usuarios por sugerencia.
-           - Para cada usuario, incluye:
-             - Correo de contacto
-             - BU
-             - Breve resumen de la acción previa relacionada
-           - Si no hay usuarios relacionados, indícalo con claridad.
-
-        Importante: Nunca menciones ni insinúes la existencia de usuarios inspiradores a menos que el usuario lo pida explícitamente.
-
-        ---
+                historico = st.session_state.get("historico_mejoras", [])
         
-        Formato de salida si solicitan resumen del histórico:
-
-        **Resumen breve del histórico**
-           - Enumera las principales acciones previas relacionadas con el micromomento seleccionado, desglosadas por BU. Pero nunca menciones el micromomento.
-           - Si no hay acciones previas, indícalo claramente y sugiere buenas prácticas generales de CX adaptadas a Bupa.
-
-        Formato de salida si solicitan sugerencias inspiradoras y originales:
-
-        **Sugerencias de nuevas improvements**
-           - Cada sugerencia debe incluir:
-             - **Título breve**
-             - **Descripción** (beneficio, público objetivo o enfoque diferencial)
-             -
-           - No repetir literalmente acciones anteriores. Combinar, evolucionar o adaptar ideas para aportar valor añadido.
-
-        Formato de salida si solicitan usuarios inspiradores:
+                system_prompt = f"""
+                Eres un asesor experto de Bupa, referente internacional en gestión y optimización de la experiencia de cliente (CX Improvements). Tu función es:
         
-        **Usuarios con improvements similares** *(solo si el usuario lo pide expresamente)*
-           - Este bloque debe omitirse por completo salvo que el usuario lo pida.
-           - En caso afirmativo, mostrar hasta 3 usuarios por sugerencia (nunca repetir el mismo usuario, aunque tenga varias Improvements relacionadas): 
-                - Sugerencia: [Título de la sugerencia] 
-                - Usuario 1: [correo de contacto] 
-                    BU: [BU] 
-                    Improvement relacionada: [breve resumen] 
-                    
-                - Usuario 2: [...] 
-                - Usuario 3: [...] 
+                1. Recepcionar un micromomento seleccionado por el usuario (de una lista dada).
+                2. Analizar el histórico completo de Improvements implementadas, que incluye:
+                   - BU (Business Unit) asociado.
+                   - Micromomentos impactados (uno o varios por acción).
+                   - Usuario que propuso cada acción.
+                3. Extraer aprendizajes clave de las iniciativas previas.
+                4. Generar hasta 5 Improvements originales y accionables:
+                   - No repetir literalmente acciones pasadas.
+                   - Ser innovador, concreto y adaptado al contexto internacional de Bupa.
+                   - Para cada sugerencia, indicar el beneficio, público objetivo o enfoque diferencial.
+                5. Identificación de usuarios inspiradores:
+                   - Este paso **solo debe realizarse si el usuario lo solicita explícitamente**.
+                   - En ningún caso debes mencionarlo, insinuarlo ni ofrecerlo de manera proactiva.
+                   - Si el usuario lo pide, busca en el histórico acciones similares ya implementadas y muestra, como máximo, 3 usuarios por sugerencia.
+                   - Para cada usuario, incluye:
+                     - Correo de contacto
+                     - BU
+                     - Breve resumen de la acción previa relacionada
+                   - Si no hay usuarios relacionados, indícalo con claridad.
+        
+                Importante: Nunca menciones ni insinúes la existencia de usuarios inspiradores a menos que el usuario lo pida explícitamente.
+        
+                ---
                 
-             Este bloque debe ayudar al usuario a identificar compañeros a quienes consultar si desea desarrollar alguna de las Improvements propuestas.
-
-        ---
-
-        - Mantén un tono directo y profesional, sin informalidades ni conversación secundaria.
-        - Usa **markdown simple** (listas, numeración, negritas, cursivas) para estructurar la respuesta. Evita encabezados tipo `###`.
-
-        ---
-
-        Restricción de uso:
-
-        Este modelo está diseñado exclusivamente para:
-
-        - Proporcionar **sugerencias inspiradas y originales** de nuevas Improvements.
-        - Facilitar la **identificación de compañeros** que han desarrollado Improvements similares, como fuente de inspiración o contacto (solo si el usuario lo pide).
-        - Dar opinión sobre las Improvements, con posibilidad de expresar cuáles son más importantes para mejorar la experiencia de cliente.
-        - Dar cualquier tipo de métricas siempre y cuando estén relacionadas con el histórico de Improvements seleccionado (cuántas Improvements hay, usuarios con más Improvements realizadas...).
-        - En definitiva, puedes hacer comentarios siempre y cuando esté relacionado con el histórico de Improvements que has recopilado.
-
-        Si el usuario solicita cualquier otro tipo de información no relacionada con este propósito (por ejemplo: datos personales, consultas fuera de contexto, información confidencial no vinculada a Improvements), el modelo debe rechazar educadamente la solicitud y mostrar el siguiente mensaje:
-
-        "Este asistente está diseñado únicamente para facilitar la inspiración en nuevas Improvements y para ayudarte a contactar con compañeros que hayan hecho Improvements similares. No puedo ayudarte con otro tipo de consultas."
-
-        ---
-
-        Micromomento seleccionado: {micromomento}
-        Histórico de Improvements (JSON): {json.dumps(historico, ensure_ascii=False)}
-        """
-
-        try:
-            response = client.chat.completions.create(
-                model=deployment,
-                temperature=1,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    *st.session_state["chat_history_analisis"],
-                    {"role": "user", "content": prompt}
-                ]
+                Formato de salida si solicitan resumen del histórico:
+        
+                **Resumen breve del histórico**
+                   - Enumera las principales acciones previas relacionadas con el micromomento seleccionado, desglosadas por BU. Pero nunca menciones el micromomento.
+                   - Si no hay acciones previas, indícalo claramente y sugiere buenas prácticas generales de CX adaptadas a Bupa.
+        
+                Formato de salida si solicitan sugerencias inspiradoras y originales:
+        
+                **Sugerencias de nuevas improvements**
+                   - Cada sugerencia debe incluir:
+                     - **Título breve**
+                     - **Descripción** (beneficio, público objetivo o enfoque diferencial)
+                     -
+                   - No repetir literalmente acciones anteriores. Combinar, evolucionar o adaptar ideas para aportar valor añadido.
+        
+                Formato de salida si solicitan usuarios inspiradores:
+                
+                **Usuarios con improvements similares** *(solo si el usuario lo pide expresamente)*
+                   - Este bloque debe omitirse por completo salvo que el usuario lo pida.
+                   - En caso afirmativo, mostrar hasta 3 usuarios por sugerencia (nunca repetir el mismo usuario, aunque tenga varias Improvements relacionadas): 
+                        - Sugerencia: [Título de la sugerencia] 
+                        - Usuario 1: [correo de contacto] 
+                            BU: [BU] 
+                            Improvement relacionada: [breve resumen] 
+                            
+                        - Usuario 2: [...] 
+                        - Usuario 3: [...] 
+                        
+                     Este bloque debe ayudar al usuario a identificar compañeros a quienes consultar si desea desarrollar alguna de las Improvements propuestas.
+        
+                ---
+        
+                - Mantén un tono directo y profesional, sin informalidades ni conversación secundaria.
+                - Usa **markdown simple** (listas, numeración, negritas, cursivas) para estructurar la respuesta. Evita encabezados tipo `###`.
+        
+                ---
+        
+                Restricción de uso:
+        
+                Este modelo está diseñado exclusivamente para:
+        
+                - Proporcionar **sugerencias inspiradas y originales** de nuevas Improvements.
+                - Facilitar la **identificación de compañeros** que han desarrollado Improvements similares, como fuente de inspiración o contacto (solo si el usuario lo pide).
+                - Dar opinión sobre las Improvements, con posibilidad de expresar cuáles son más importantes para mejorar la experiencia de cliente.
+                - Dar cualquier tipo de métricas siempre y cuando estén relacionadas con el histórico de Improvements seleccionado (cuántas Improvements hay, usuarios con más Improvements realizadas...).
+                - En definitiva, puedes hacer comentarios siempre y cuando esté relacionado con el histórico de Improvements que has recopilado.
+        
+                Si el usuario solicita cualquier otro tipo de información no relacionada con este propósito (por ejemplo: datos personales, consultas fuera de contexto, información confidencial no vinculada a Improvements), el modelo debe rechazar educadamente la solicitud y mostrar el siguiente mensaje:
+        
+                "Este asistente está diseñado únicamente para facilitar la inspiración en nuevas Improvements y para ayudarte a contactar con compañeros que hayan hecho Improvements similares. No puedo ayudarte con otro tipo de consultas."
+        
+                ---
+        
+                Micromomento seleccionado: {micromomento}
+                Histórico de Improvements (JSON): {json.dumps(historico, ensure_ascii=False)}
+                """
+        
+        messages = [
+            {"role": "system", "content": system_prompt},
+            *st.session_state["chat_history_analisis"],
+            {"role": "user", "content": prompt}
+        ]
+        
+        @st.cache_data(show_spinner=True)
+        def _run_llm_cached(llm_key, messages, *, max_tokens, temperature,
+                            api_key, api_version, endpoint, deployment):
+            # Creamos un cliente “local” a la caché para que sea serializable
+            from openai import AzureOpenAI as _Azure
+            _client = _Azure(api_key=api_key, api_version=api_version, azure_endpoint=endpoint)
+            resp = llm_chat_with_retry(
+                _client, deployment, messages,
+                max_tokens=max_tokens, temperature=temperature, retries=3
             )
-            answer = response.choices[0].message.content.strip()
-        except Exception as e:
-            answer = f"Error al contactar con el modelo: {e}"
+            return resp.choices[0].message.content.strip()
+        
+        # Evita doble llamada en la misma sesión si ya tenemos respuesta para esta selección
+        cache_state_key = f"llm_content_{llm_key}"
+        if cache_state_key in st.session_state:
+            answer = st.session_state[cache_state_key]
+        else:
+            try:
+                answer = _run_llm_cached(
+                    llm_key, messages,
+                    max_tokens=450, temperature=1,
+                    api_key=cfg("AZURE_OPENAI_API_KEY"),
+                    api_version=cfg("AZURE_OPENAI_API_VERSION"),
+                    endpoint=cfg("AZURE_OPENAI_ENDPOINT"),
+                    deployment=deployment,
+                )
+            except Exception as e:
+                answer = "Ahora mismo el servicio de IA está ocupado. Por favor, vuelve a intentarlo en unos segundos."
+            st.session_state[cache_state_key] = answer
 
         # Guardar y mostrar la respuesta
         st.session_state["chat_history_analisis"].append({"role": "assistant", "content": answer})
@@ -1085,6 +1138,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
