@@ -17,6 +17,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib import colors
 from reportlab.lib.units import cm
+from pathlib import Path
 
 import logging, os
 logging.basicConfig()
@@ -67,12 +68,49 @@ with st.sidebar:
 # =========================================================
 load_dotenv()
 
-# --- Secrets helper: prioriza st.secrets y cae a variables de entorno ---
 def cfg(key, default=None):
+    # Prioriza st.secrets; si no, variables de entorno (para local)
     try:
         return st.secrets[key]
     except Exception:
+        import os
         return os.getenv(key, default)
+
+OFFLINE = cfg("SQL_DIALECT", "pyodbc").lower() == "offline"
+
+@st.cache_data(show_spinner=False)
+def _load_parquet(name: str) -> pd.DataFrame:
+    base = Path(__file__).parent / "data"
+    path = base / name
+    if not path.exists():
+        raise FileNotFoundError(f"No existe {path}. Sube los .parquet a /data.")
+    return pd.read_parquet(path)
+
+@st.cache_data(show_spinner=False)
+def load_df_micros() -> pd.DataFrame:
+    df = _load_parquet("micromomentos_actuar.parquet")
+    df = df.rename(columns={
+        "BU": "bu",
+        "Micromomento": "micromomento",
+        "Micromomento_Global": "micromomento_global",
+    })
+    return df[["bu", "micromomento", "micromomento_global"]]
+
+@st.cache_data(show_spinner=False)
+def load_df_desplegables() -> pd.DataFrame:
+    return _load_parquet("datosdesplegables_actuar.parquet")  # BU, Id_Desplegable2/3, Valor_Desplegable2/3
+
+@st.cache_data(show_spinner=False)
+def load_df_multiples() -> pd.DataFrame:
+    return _load_parquet("datosmultiplesmejorasactuar.parquet")  # ID_MEJORA, Id_Seleccionado
+
+@st.cache_data(show_spinner=False)
+def load_df_mejoras() -> pd.DataFrame:
+    return _load_parquet("mejorasactuar.parquet")  # ID_MEJORA, BU, ID_USUARIO, FECHA, Titulo, Detalle
+
+@st.cache_data(show_spinner=False)
+def load_df_usuarios() -> pd.DataFrame:
+    return _load_parquet("usuarios.parquet")  # ID_USUARIO, USUARIO
 
 st.markdown("""
 <style>
@@ -195,6 +233,10 @@ def update_pdf_bytes():
 # 🔹 Conexión a la BBDD de Azure
 # =========================================================
 def crear_engine():
+    
+    if OFFLINE:
+        return None  # modo Parquet: no hay SQL
+    
     dialect = cfg("SQL_DIALECT", "pyodbc")  # en Streamlit Cloud pon 'pytds' en Secrets
 
     server   = cfg("SQL_SERVER")
@@ -234,26 +276,39 @@ def probar_conexion(engine):
         return False, f"{repr(e)}\n{tb[-1200:]}"
 
 def obtener_micromomentos_por_bu(bu, eng):
-    try:
+    bu_norm = str(bu).strip().upper()
+    if eng is None:  # OFFLINE
+        df = load_df_micros()
+        mask = df["bu"].astype(str).str.strip().str.upper() == bu_norm
+        vals = (df.loc[mask, "micromomento"]
+                  .dropna().astype(str).str.strip().unique())
+        return sorted(vals.tolist())
+    else:  # SQL
         sql = text("""
             SELECT DISTINCT micromomento
             FROM dbo.Micromomentos_Actuar
             WHERE UPPER(LTRIM(RTRIM(bu))) = UPPER(LTRIM(RTRIM(:bu)))
             ORDER BY micromomento
         """)
-        df = pd.read_sql_query(sql, eng, params={"bu": bu})
-        return df["micromomento"].tolist() if not df.empty else []
-    except Exception as e:
-        st.warning(f"No se pudieron recuperar micromomentos para {bu}: {e}")
-        return []
+        df_sql = pd.read_sql_query(sql, eng, params={"bu": bu})
+        return df_sql["micromomento"].tolist() if not df_sql.empty else []
 
 def obtener_bus_por_micromomento(mm, bu_ref, eng):
-    """
-    Dado un micromomento 'mm' (texto BU-local) y una BU de referencia 'bu_ref',
-    encuentra su micromomento_global y devuelve la lista de BUs donde aparece.
-    """
-    try:
-        # 1) Resolver el micromomento_global a partir de (BU, micromomento)
+    if eng is None:  # OFFLINE
+        df = load_df_micros()
+        bu_norm = str(bu_ref).strip().upper()
+        mm_norm = str(mm).strip().upper()
+        sub = df[
+            (df["bu"].astype(str).str.strip().str.upper() == bu_norm) &
+            (df["micromomento"].astype(str).str.strip().str.upper() == mm_norm)
+        ].head(1)
+        if sub.empty:
+            return []
+        mmg = sub.iloc[0]["micromomento_global"]
+        vals = (df.loc[df["micromomento_global"] == mmg, "bu"]
+                  .dropna().astype(str).str.strip().unique())
+        return sorted(vals.tolist())
+    else:  # SQL
         sql1 = text("""
             SELECT TOP 1 micromomento_global
             FROM dbo.Micromomentos_Actuar
@@ -263,21 +318,46 @@ def obtener_bus_por_micromomento(mm, bu_ref, eng):
         df_sub = pd.read_sql_query(sql1, eng, params={"bu": bu_ref, "mm": mm})
         if df_sub.empty:
             return []
-
-        mm_global = df_sub.iloc[0]["micromomento_global"]
-
-        # 2) BUs donde aparece ese micromomento_global
+        mmg = df_sub.iloc[0]["micromomento_global"]
         sql2 = text("""
             SELECT DISTINCT bu
             FROM dbo.Micromomentos_Actuar
             WHERE micromomento_global = :mmg
             ORDER BY bu
         """)
-        df_bu = pd.read_sql_query(sql2, eng, params={"mmg": mm_global})
+        df_bu = pd.read_sql_query(sql2, eng, params={"mmg": mmg})
         return df_bu["bu"].tolist() if not df_bu.empty else []
-    except Exception as e:
-        st.warning(f"No se pudieron recuperar BUs para {mm}: {e}")
-        return []
+
+@st.cache_data(show_spinner=True)
+def obtener_improvements_offline(bu: str|None, micromomento: str|None) -> pd.DataFrame:
+    mejoras = load_df_mejoras()
+    multiples = load_df_multiples()
+    despl = load_df_desplegables()
+
+    j = multiples.merge(
+        despl, left_on="Id_Seleccionado", right_on="Id_Desplegable3", how="inner"
+    ).merge(
+        mejoras, on="ID_MEJORA", how="inner"
+    )
+
+    if micromomento:
+        mm_norm = str(micromomento).strip().upper()
+        j = j[j["Valor_Desplegable3"].astype(str).str.strip().str.upper() == mm_norm]
+
+    if bu:
+        bu_norm = str(bu).strip().upper()
+        j = j[j["Valor_Desplegable2"].astype(str).str.strip().str.upper() == bu_norm]
+
+    # Traer nombre de usuario si existe
+    try:
+        usuarios = load_df_usuarios()
+        j = j.merge(usuarios, on="ID_USUARIO", how="left")
+    except Exception:
+        pass
+
+    cols_out = [c for c in ["ID_MEJORA","BU","USUARIO","FECHA","Titulo","Detalle",
+                            "Valor_Desplegable2","Valor_Desplegable3"] if c in j.columns]
+    return j[cols_out].sort_values(by="FECHA", ascending=False, na_position="last")
 
 engine = None
 if "bu_simulada" in st.session_state:
@@ -285,6 +365,7 @@ if "bu_simulada" in st.session_state:
         # Crear engine
         try:
             engine = crear_engine()
+            st.caption("Modo datos: OFFLINE (CSV/Parquet)" if engine is None else "Modo datos: SQL")
         except Exception as e:
             st.error(f"Error creando engine: {repr(e)}")
             engine = None
@@ -527,6 +608,7 @@ if "bu_simulada" in st.session_state and engine is not None:
 if st.session_state.get("finalizado", False):
     try:
         engine_final = crear_engine()
+        st.caption("Modo datos: OFFLINE (CSV/Parquet)" if engine_final is None else "Modo datos: SQL")
 
         # Smoke test de conexión
         with engine_final.connect() as conn:
@@ -932,6 +1014,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
