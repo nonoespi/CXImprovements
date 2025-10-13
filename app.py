@@ -147,18 +147,6 @@ def load_df_mejoras() -> pd.DataFrame:
 
     return df
 
-@st.cache_data(show_spinner=False)
-def load_df_desplegables() -> pd.DataFrame:
-    return _load_parquet("datosdesplegables_actuar.parquet")  # BU, Id_Desplegable2/3, Valor_Desplegable2/3
-
-@st.cache_data(show_spinner=False)
-def load_df_multiples() -> pd.DataFrame:
-    return _load_parquet("datosmultiplesmejorasactuar.parquet")  # ID_MEJORA, Id_Seleccionado
-
-@st.cache_data(show_spinner=False)
-def load_df_usuarios() -> pd.DataFrame:
-    return _load_parquet("usuarios.parquet")  # ID_USUARIO, USUARIO
-
 st.markdown("""
 <style>
 .chat-message { padding:10px 15px; border-radius:15px; margin:8px; word-wrap:break-word; }
@@ -1141,4 +1129,5 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
