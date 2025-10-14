@@ -568,7 +568,7 @@ if "bu_simulada" in st.session_state:   # ✅ también en OFFLINE
     # ---------------------------
     if st.session_state["fase"] is None and not st.session_state.get("finalizado", False):
         # Bloque 1: BUs
-        st.markdown('<div class="chat-message assistant">Si lo deseas, podemos profundizar en una BU:</div>', unsafe_allow_html=True)
+        st.markdown('<div class="chat-message assistant">Si lo deseas, podemos profundizar en una BU...</div>', unsafe_allow_html=True)
         cols = st.columns(4)
         for i, bu in enumerate(lista_bu):
             with cols[i % 4]:
@@ -588,7 +588,7 @@ if "bu_simulada" in st.session_state:   # ✅ también en OFFLINE
 
         # Bloque 2: Micromomentos de la BU simulada
         st.markdown(
-            f'<div class="chat-message assistant">Por otro lado, podemos indagar en alguno de los micromomentos de la BU {st.session_state["bu_simulada"]}:</div>',
+            f'<div class="chat-message assistant">... o si lo prefieres, podemos indagar en alguno de los micromomentos de la BU {st.session_state["bu_simulada"]}:</div>',
             unsafe_allow_html=True
         )
         cols2 = st.columns(4)
@@ -1137,6 +1137,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
