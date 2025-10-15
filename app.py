@@ -572,7 +572,7 @@ if "bu_simulada" in st.session_state:   # ✅ también en OFFLINE
         with c1:
             if st.button("Micromomentos", key="b0_mm", use_container_width=True):
                 st.session_state["inicio_opcion"] = "mm"
-                st.session_state["chat_history"].append({"role": "user", "content": f"Selección de búsqueda: Micromomentos"})
+                st.session_state["chat_history"].append({"role": "user", "content": f"Búsqueda seleccionada: Micromomentos"})
                 # Limpieza de restos de botones previos
                 for key in list(st.session_state.keys()):
                     if key.startswith("btn_"):
@@ -588,7 +588,7 @@ if "bu_simulada" in st.session_state:   # ✅ también en OFFLINE
         with c2:
             if st.button("BUs", key="b0_bu", use_container_width=True):
                 st.session_state["inicio_opcion"] = "bus"
-                st.session_state["chat_history"].append({"role": "user", "content": f"Selección de búsqueda: BUs"})
+                st.session_state["chat_history"].append({"role": "user", "content": f"Búsqueda seleccionada: BUs"})
                 # Limpieza de restos de botones previos
                 for key in list(st.session_state.keys()):
                     if key.startswith("btn_"):
@@ -1167,6 +1167,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
