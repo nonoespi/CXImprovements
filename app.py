@@ -73,9 +73,9 @@ with st.sidebar:
     )
 
     if st.button("Comenzar"):
-        st.session_state["bu_simulada"] = bu_preseleccionada
+		st.session_state["bu_simulada"] = bu_preseleccionada
 		# === NUEVO: restringe el universo de BUs al grupo de la BU simulada ===
-    	st.session_state["bus_permitidas"] = _bus_permitidas_para(bu_preseleccionada)
+		st.session_state["bus_permitidas"] = _bus_permitidas_para(bu_preseleccionada)
 
     # Mostrar BU validada
     if "bu_simulada" in st.session_state:
@@ -1275,6 +1275,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
