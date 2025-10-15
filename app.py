@@ -596,7 +596,8 @@ if "bu_simulada" in st.session_state:   # ✅ también en OFFLINE
                 # Mensaje del chatbot equivalente al que mostraba el bloque 1
                 st.session_state["chat_history"].append({
                     "role": "assistant",
-                    "content": "Elige una BU"
+                    "content": "Estas son las distintas BUs de BUPA. "
+                                    f"¿Sobre cuál querrías que nos centráramos?"
                 })
                 update_pdf_bytes()
                 st.rerun()
@@ -1167,6 +1168,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
