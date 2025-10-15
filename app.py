@@ -577,12 +577,12 @@ if "bu_simulada" in st.session_state:   # ✅ también en OFFLINE
 	st.session_state.setdefault("inicio_opcion", None)
 	st.session_state.setdefault("inspiracion_general", False)
 
-    # Mensaje de bienvenida (una vez)
-    if not st.session_state["chat_history"]:
-        st.session_state["chat_history"].append(
-            {"role": "assistant",
-             "content": "Hola. Soy el asistente de CX de Bupa. Mi objetivo es ayudarte a encontrar inspiración basada en el histórico de Improvements realizadas. ¿Sobre qué te gustaría que profundicemos?"}
-        )
+	# Mensaje de bienvenida (una vez)
+	if not st.session_state["chat_history"]:
+		st.session_state["chat_history"].append(
+			{"role": "assistant",
+			"content": "Hola. Soy el asistente de CX de Bupa. Mi objetivo es ayudarte a encontrar inspiración basada en el histórico de Improvements realizadas. ¿Sobre qué te gustaría que profundicemos?"}
+		)
 
     # Render del historial
     for msg in st.session_state["chat_history"]:
@@ -1300,6 +1300,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
