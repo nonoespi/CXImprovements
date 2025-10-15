@@ -593,7 +593,7 @@ if "bu_simulada" in st.session_state:   # ✅ también en OFFLINE
     # Bloque 0: Elección de flujo inicial (Micromomentos vs BUs vs Inspiración General)
     # ---------------------------
     if st.session_state["fase"] is None and not st.session_state.get("finalizado", False) and st.session_state.get("inicio_opcion") is None:
-        c1, c2, c3 = st.columns(3)
+		c1, c2, c3 = st.columns(3)
     
         with c1:
             if st.button("Micromomentos", key="b0_mm", use_container_width=True):
@@ -1300,6 +1300,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
