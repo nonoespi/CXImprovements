@@ -42,6 +42,22 @@ lista_bu = [
     "SEGUROS", "VITAMEDICA"
 ]
 
+# === NUEVO: Grupos de BUs ===
+FUNDING = {"BGLA", "BUT", "CAREPLUS", "MEXICO", "CHILEINSURANCE", "SEGUROS"}
+PROVISION = {"HOSPITALES", "DENTAL", "MAYORES", "LUXMED", "VITAMEDICA", "CHILEPROVISION"}
+
+def _grupo_de_bu(bu: str) -> str:
+    b = (bu or "").strip().upper()
+    if b in FUNDING: return "FUNDING"
+    if b in PROVISION: return "PROVISION"
+    return "DESCONOCIDO"
+
+def _bus_permitidas_para(bu_simulada: str) -> list[str]:
+    grupo = _grupo_de_bu(bu_simulada)
+    base = FUNDING if grupo == "FUNDING" else PROVISION if grupo == "PROVISION" else set()
+    # Conserva el orden de lista_bu original, filtrando por el grupo
+    return [b for b in lista_bu if b in base]
+
 with st.sidebar:
     # Botón para resetear todo
     if st.button("🔄 Resetear demo"):
@@ -58,6 +74,8 @@ with st.sidebar:
 
     if st.button("Comenzar"):
         st.session_state["bu_simulada"] = bu_preseleccionada
+		# === NUEVO: restringe el universo de BUs al grupo de la BU simulada ===
+    	st.session_state["bus_permitidas"] = _bus_permitidas_para(bu_preseleccionada)
 
     # Mostrar BU validada
     if "bu_simulada" in st.session_state:
@@ -628,10 +646,11 @@ if "bu_simulada" in st.session_state:   # ✅ también en OFFLINE
     # Bloque 1: BUs (aparece si en bloque 0 eligieron 'BUs')
     # ---------------------------
     if st.session_state["fase"] is None and not st.session_state.get("finalizado", False) and st.session_state.get("inicio_opcion") == "bus":
-        cols = st.columns(4)
-        for i, bu in enumerate(lista_bu):
-            with cols[i % 4]:
-                if st.button(bu, key=f"btn_bu_{bu}", use_container_width=True):
+	    bus_visibles = st.session_state.get("bus_permitidas", lista_bu)  # ← NUEVO
+	    cols = st.columns(4)
+	    for i, bu in enumerate(bus_visibles):  # ← usar solo las permitidas
+	        with cols[i % 4]:
+	            if st.button(bu, key=f"btn_bu_{bu}", use_container_width=True):
                     st.session_state["bu_seleccionada"] = bu
                     st.session_state["chat_history"].append({"role": "user", "content": f"BU seleccionada: {bu}"})
                     # Pasamos a BLOQUE 3 (micromomentos de esa BU) y ocultamos los bloques iniciales
@@ -732,11 +751,10 @@ if "bu_simulada" in st.session_state:   # ✅ también en OFFLINE
     # Bloque 4: BUs con el micromomento seleccionado (incluye 'TODAS') (finaliza al elegir)
     # ---------------------------
     if st.session_state.get("fase") == "bus_por_mm":
-        bus_mm = st.session_state.get("bus_por_mm", [])
-        # st.markdown(
-        #     f'<div class="chat-message assistant">BUs con el micromomento {st.session_state["mm_seleccionado"]}:</div>',
-        #     unsafe_allow_html=True
-        # )
+        bus_mm = obtener_bus_por_micromomento(mm, st.session_state["bu_simulada"], engine)
+		# === NUEVO: restringir a grupo del usuario ===
+		bus_mm = [b for b in bus_mm if b in st.session_state.get("bus_permitidas", bus_mm)]
+		st.session_state["bus_por_mm"] = bus_mm
         cols4 = st.columns(4)
         opciones = bus_mm + ["TODAS"]
         for i, bu in enumerate(opciones):
@@ -794,6 +812,9 @@ if st.session_state.get("finalizado", False):
             if es_general:
                 # Sin filtros: TODO el histórico
                 df = obtener_improvements_offline(bu=None, micromomento=None)
+				bus_permitidas = st.session_state.get("bus_permitidas")
+				if bus_permitidas and not df.empty and "BU" in df.columns:
+				    df = df[df["BU"].isin(bus_permitidas)].copy()
 
                 # Filtro últimos 6 meses con comprobaciones seguras
                 if not df.empty and "FECHA" in df.columns:
@@ -805,6 +826,9 @@ if st.session_state.get("finalizado", False):
                     st.warning("No se pudo aplicar el filtro temporal (DF vacío o sin columna 'FECHA').")
             else:
                 df = obtener_improvements_offline(bu=bu_filter, micromomento=mm_filter)
+				bus_permitidas = st.session_state.get("bus_permitidas")
+				if bus_permitidas and not df.empty and "BU" in df.columns:
+				    df = df[df["BU"].isin(bus_permitidas)].copy()
 
         else:
             # ---------- SQL ----------
@@ -860,6 +884,9 @@ if st.session_state.get("finalizado", False):
                 ORDER BY A.ID_MEJORA DESC;
                 """
                 df = pd.read_sql(query, engine_final)
+				bus_permitidas = st.session_state.get("bus_permitidas")
+				if bus_permitidas and not df.empty and "BU" in df.columns:
+				    df = df[df["BU"].isin(bus_permitidas)].copy()
 
             else:
                 # === Casos existentes 1/2/3 (tu código actual) ===
@@ -916,6 +943,9 @@ if st.session_state.get("finalizado", False):
                     ORDER BY A.ID_MEJORA DESC;
                     """
                     df = pd.read_sql(query, engine_final)
+					bus_permitidas = st.session_state.get("bus_permitidas")
+					if bus_permitidas and not df.empty and "BU" in df.columns:
+					    df = df[df["BU"].isin(bus_permitidas)].copy()
     
                 elif mm and bu_focus:
                     # === Caso 2: micromomento + BU concreta ===
@@ -958,6 +988,9 @@ if st.session_state.get("finalizado", False):
                     ORDER BY A.ID_MEJORA DESC;
                     """
                     df = pd.read_sql(query, engine_final)
+					bus_permitidas = st.session_state.get("bus_permitidas")
+					if bus_permitidas and not df.empty and "BU" in df.columns:
+					    df = df[df["BU"].isin(bus_permitidas)].copy()
     
                 elif bu_focus and not mm:
                     # === Caso 3: solo BU ===
@@ -995,6 +1028,9 @@ if st.session_state.get("finalizado", False):
                     ORDER BY A.ID_MEJORA DESC;
                     """
                     df = pd.read_sql(query, engine_final)
+					bus_permitidas = st.session_state.get("bus_permitidas")
+					if bus_permitidas and not df.empty and "BU" in df.columns:
+					    df = df[df["BU"].isin(bus_permitidas)].copy()
     
                 else:
                     df = pd.DataFrame()
@@ -1239,6 +1275,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
