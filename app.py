@@ -853,7 +853,7 @@ if st.session_state.get("finalizado", False):
                 if not df.empty and "FECHA" in df.columns:
                     if not pd.api.types.is_datetime64_any_dtype(df["FECHA"]):
                         df["FECHA"] = pd.to_datetime(df["FECHA"], errors="coerce")
-                    corte = pd.Timestamp.today().normalize() - pd.DateOffset(months=6)
+                    corte = pd.Timestamp.today().normalize() - pd.DateOffset(months=3)
                     df = df[df["FECHA"] >= corte].copy()
                 else:
                     st.warning("No se pudo aplicar el filtro temporal (DF vacío o sin columna 'FECHA').")
@@ -898,7 +898,7 @@ if st.session_state.get("finalizado", False):
                         FROM MEJORASACTUAR A
                         LEFT JOIN DATOSMULTIPLESMEJORASACTUAR B ON A.ID_MEJORA = B.ID_MEJORA
                         WHERE A.ESVALIDADABU=1 AND A.ESVALIDADASANITAS=1
-	                      AND CAST(A.FECHA AS DATE)>=CAST(DATEADD(MONTH,-6,GETDATE()) AS DATE)
+	                      AND CAST(A.FECHA AS DATE)>=CAST(DATEADD(MONTH,-3,GETDATE()) AS DATE)
                           AND (
                               (B.Id_Desplegable = 'Id_Desplegable3' AND A.BU IN ('HOSPITALES', 'DENTAL', 'MAYORES')) OR
                               (B.Id_Desplegable = 'Id_Desplegable2' AND A.BU NOT IN ('HOSPITALES', 'DENTAL', 'MAYORES'))
@@ -1306,5 +1306,6 @@ with header_ph.container():
       <h1>CX Improvements</h1>
       {'<a class="download-btn" download="historico_conversacion.pdf" href="data:application/pdf;base64,'+b64+'" title="Descargar PDF">'+svg_icon+'</a>' if pdf_bytes else ''}
     </div>
+
 
     """, unsafe_allow_html=True)
