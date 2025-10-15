@@ -1300,13 +1300,3 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
-
-
-
-
-
-
-
-
-
-
