@@ -568,7 +568,6 @@ if "bu_simulada" in st.session_state:   # ✅ también en OFFLINE
     # Bloque 0: Elección de flujo inicial (Micromomentos vs BUs)
     # ---------------------------
     if st.session_state["fase"] is None and not st.session_state.get("finalizado", False) and st.session_state.get("inicio_opcion") is None:
-        st.markdown('<div class="chat-message assistant">¿Cómo prefieres empezar la búsqueda de inspiración?</div>', unsafe_allow_html=True)
         c1, c2 = st.columns(2)
         with c1:
             if st.button("Micromomentos", key="b0_mm", use_container_width=True):
@@ -1165,6 +1164,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
