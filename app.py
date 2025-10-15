@@ -755,50 +755,62 @@ if (
                     update_pdf_bytes()
                     st.rerun()
 
-    # ---------------------------
-    # Bloque 4: BUs con el micromomento seleccionado (incluye 'TODAS') (finaliza al elegir)
-    # ---------------------------
-    if st.session_state.get("fase") == "bus_por_mm":
-        bus_mm = obtener_bus_por_micromomento(mm, st.session_state["bu_simulada"], engine)
-		# === NUEVO: restringir a grupo del usuario ===
-		bus_mm = [b for b in bus_mm if b in st.session_state.get("bus_permitidas", bus_mm)]
-		st.session_state["bus_por_mm"] = bus_mm
-        cols4 = st.columns(4)
-        opciones = bus_mm + ["TODAS"]
-        for i, bu in enumerate(opciones):
-            with cols4[i % 4]:
-                if st.button(bu, key=f"btn_bu_mm_{bu}", use_container_width=True):
-                    if bu == "TODAS":
-                        st.session_state["chat_history"].append(
-                            {"role": "user", "content": "BU seleccionada: TODAS"}
-                        )
-                        st.session_state["bu_mm_seleccionada"] = "todas"
-                        st.session_state["chat_history"].append(
-                            {"role": "assistant",
-                             "content": f"Vamos a buscar inspiración del micromomento "
-                                        f"{st.session_state['mm_seleccionado']} para todas las BUs."}
-                        )
-                    else:
-                        st.session_state["chat_history"].append(
-                            {"role": "user", "content": f"BU seleccionada: {bu}"}
-                        )
-                        st.session_state["bu_mm_seleccionada"] = bu
-                        st.session_state["chat_history"].append(
-                            {"role": "assistant",
-                             "content": f"Vamos a buscar inspiración del micromomento "
-                                        f"{st.session_state['mm_seleccionado']} para la BU {bu}."}
-                        )
-                    st.session_state["chat_history"].append(
-                            {"role": "assistant",
-                             "content": f"Recopilando histórico de Improvements. Iniciando chat..."}
-                        )   
-                    st.session_state["finalizado"] = True
-                    st.session_state["fase"] = None  # ocultar botones tras la selección
-                    for key in list(st.session_state.keys()):
-                        if key.startswith("btn_"):
-                            del st.session_state[key]
-                    update_pdf_bytes()
-                    st.rerun()
+	# ---------------------------
+	# Bloque 4: BUs con el micromomento seleccionado (incluye 'TODAS') (finaliza al elegir)
+	# ---------------------------
+	if st.session_state.get("fase") == "bus_por_mm":
+	    mm = st.session_state.get("mm_seleccionado")  # asegurar variable local
+	    bus_mm = obtener_bus_por_micromomento(mm, st.session_state["bu_simulada"], engine)
+	    # === NUEVO: restringir a grupo del usuario ===
+	    bus_mm = [b for b in bus_mm if b in st.session_state.get("bus_permitidas", bus_mm)]
+	    st.session_state["bus_por_mm"] = bus_mm
+	
+	    cols4 = st.columns(4)
+	    opciones = bus_mm + ["TODAS"]
+	    for i, bu in enumerate(opciones):
+	        with cols4[i % 4]:
+	            if st.button(bu, key=f"btn_bu_mm_{bu}", use_container_width=True):
+	                if bu == "TODAS":
+	                    st.session_state["chat_history"].append(
+	                        {"role": "user", "content": "BU seleccionada: TODAS"}
+	                    )
+	                    st.session_state["bu_mm_seleccionada"] = "todas"
+	                    st.session_state["chat_history"].append(
+	                        {
+	                            "role": "assistant",
+	                            "content": (
+	                                f"Vamos a buscar inspiración del micromomento "
+	                                f"{st.session_state['mm_seleccionado']} para todas las BUs."
+	                            ),
+	                        }
+	                    )
+	                else:
+	                    st.session_state["chat_history"].append(
+	                        {"role": "user", "content": f"BU seleccionada: {bu}"}
+	                    )
+	                    st.session_state["bu_mm_seleccionada"] = bu
+	                    st.session_state["chat_history"].append(
+	                        {
+	                            "role": "assistant",
+	                            "content": (
+	                                f"Vamos a buscar inspiración del micromomento "
+	                                f"{st.session_state['mm_seleccionado']} para la BU {bu}."
+	                            ),
+	                        }
+	                    )
+	
+	                st.session_state["chat_history"].append(
+	                    {"role": "assistant", "content": "Recopilando histórico de Improvements. Iniciando chat..."}
+	                )
+	                st.session_state["finalizado"] = True
+	                st.session_state["fase"] = None  # ocultar botones tras la selección
+	
+	                for key in list(st.session_state.keys()):
+	                    if key.startswith("btn_"):
+	                        del st.session_state[key]
+	
+	                update_pdf_bytes()
+	                st.rerun()
 
 # =========================================================
 # 🔹 SEGUNDO CHATBOT: ANÁLISIS DE HISTÓRICO Y PROPUESTAS
@@ -1283,6 +1295,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
