@@ -794,6 +794,12 @@ if st.session_state.get("finalizado", False):
             if es_general:
                 # Sin filtros: TODO el histórico (último año si tu parquet ya viene acotado; si no, tal cual)
                 df = obtener_improvements_offline(bu=None, micromomento=None)
+				# Asegurar que FECHA es datetime
+			    if not pd.api.types.is_datetime64_any_dtype(df["FECHA"]):
+			        df["FECHA"] = pd.to_datetime(df["FECHA"], errors="coerce")
+			
+			    corte = pd.Timestamp.today().normalize() - pd.DateOffset(months=6)
+			    df = df[df["FECHA"] >= corte].copy()
             else:
                 df = obtener_improvements_offline(bu=bu_filter, micromomento=mm_filter)
 
@@ -832,7 +838,7 @@ if st.session_state.get("finalizado", False):
                         FROM MEJORASACTUAR A
                         LEFT JOIN DATOSMULTIPLESMEJORASACTUAR B ON A.ID_MEJORA = B.ID_MEJORA
                         WHERE A.ESVALIDADABU=1 AND A.ESVALIDADASANITAS=1
-	                      AND CAST(A.FECHA AS DATE)>=CAST(DATEADD(YEAR,-1,GETDATE()) AS DATE)
+	                      AND CAST(A.FECHA AS DATE)>=CAST(DATEADD(MONTH,-6,GETDATE()) AS DATE)
                           AND (
                               (B.Id_Desplegable = 'Id_Desplegable3' AND A.BU IN ('HOSPITALES', 'DENTAL', 'MAYORES')) OR
                               (B.Id_Desplegable = 'Id_Desplegable2' AND A.BU NOT IN ('HOSPITALES', 'DENTAL', 'MAYORES'))
@@ -1230,6 +1236,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
