@@ -831,7 +831,8 @@ if st.session_state.get("finalizado", False):
                                B.Id_Seleccionado AS Id_Desplegable
                         FROM MEJORASACTUAR A
                         LEFT JOIN DATOSMULTIPLESMEJORASACTUAR B ON A.ID_MEJORA = B.ID_MEJORA
-                        WHERE CAST(A.FECHA AS DATE)>=CAST(DATEADD(YEAR,-1,GETDATE()) AS DATE)
+                        WHERE A.ESVALIDADABU=1 AND A.ESVALIDADASANITAS=1
+	                      AND CAST(A.FECHA AS DATE)>=CAST(DATEADD(YEAR,-1,GETDATE()) AS DATE)
                           AND (
                               (B.Id_Desplegable = 'Id_Desplegable3' AND A.BU IN ('HOSPITALES', 'DENTAL', 'MAYORES')) OR
                               (B.Id_Desplegable = 'Id_Desplegable2' AND A.BU NOT IN ('HOSPITALES', 'DENTAL', 'MAYORES'))
@@ -883,7 +884,8 @@ if st.session_state.get("finalizado", False):
                                    B.Id_Seleccionado AS Id_Desplegable
                             FROM MEJORASACTUAR A
                             LEFT JOIN DATOSMULTIPLESMEJORASACTUAR B ON A.ID_MEJORA = B.ID_MEJORA
-                            WHERE CAST(A.FECHA AS DATE)>=CAST(DATEADD(YEAR,-1,GETDATE()) AS DATE)
+                            WHERE A.ESVALIDADABU=1 AND A.ESVALIDADASANITAS=1
+	                          AND CAST(A.FECHA AS DATE)>=CAST(DATEADD(YEAR,-1,GETDATE()) AS DATE)
                               AND (
                                   (B.Id_Desplegable = 'Id_Desplegable3' AND A.BU IN ('HOSPITALES', 'DENTAL', 'MAYORES'))
                                   OR
@@ -923,7 +925,8 @@ if st.session_state.get("finalizado", False):
                                    B.Id_Seleccionado AS Id_Desplegable
                             FROM MEJORASACTUAR A
                             LEFT JOIN DATOSMULTIPLESMEJORASACTUAR B ON A.ID_MEJORA = B.ID_MEJORA
-                            WHERE CAST(A.FECHA AS DATE)>=CAST(DATEADD(YEAR,-1,GETDATE()) AS DATE)
+                            WHERE A.ESVALIDADABU=1 AND A.ESVALIDADASANITAS=1
+	                          AND CAST(A.FECHA AS DATE)>=CAST(DATEADD(YEAR,-1,GETDATE()) AS DATE)
                               AND A.BU=@BU
                               AND (
                                   (B.Id_Desplegable = 'Id_Desplegable3' AND A.BU IN ('HOSPITALES', 'DENTAL', 'MAYORES'))
@@ -1227,6 +1230,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
