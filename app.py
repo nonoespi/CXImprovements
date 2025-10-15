@@ -550,6 +550,7 @@ if "bu_simulada" in st.session_state:   # ✅ también en OFFLINE
     st.session_state.setdefault("bu_seleccionada", None)
     st.session_state.setdefault("mm_seleccionado", None)
     st.session_state.setdefault("bu_mm_seleccionada", None)
+    st.session_state.setdefault("inicio_opcion", None)
 
     # Mensaje de bienvenida (una vez)
     if not st.session_state["chat_history"]:
@@ -564,11 +565,44 @@ if "bu_simulada" in st.session_state:   # ✅ también en OFFLINE
         st.markdown(f'<div class="chat-message {role_class}">{msg["content"]}</div>', unsafe_allow_html=True)
 
     # ---------------------------
-    # Bloques iniciales 1 y 2 (solo al inicio)
+    # Bloque 0: Elección de flujo inicial (Micromomentos vs BUs)
     # ---------------------------
-    if st.session_state["fase"] is None and not st.session_state.get("finalizado", False):
-        # Bloque 1: BUs
-        st.markdown('<div class="chat-message assistant">Si lo deseas, podemos profundizar en una BU...</div>', unsafe_allow_html=True)
+    if st.session_state["fase"] is None and not st.session_state.get("finalizado", False) and st.session_state.get("inicio_opcion") is None:
+        st.markdown('<div class="chat-message assistant">¿Cómo prefieres empezar la búsqueda de inspiración?</div>', unsafe_allow_html=True)
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("Micromomentos", key="b0_mm", use_container_width=True):
+                st.session_state["inicio_opcion"] = "mm"
+                # Limpieza de restos de botones previos
+                for key in list(st.session_state.keys()):
+                    if key.startswith("btn_"):
+                        del st.session_state[key]
+                # Mensaje del chatbot equivalente al que mostraba el bloque 2
+                st.session_state["chat_history"].append({
+                    "role": "assistant",
+                    "content": f"Micromomentos de la BU simulada: {st.session_state['bu_simulada']}"
+                })
+                update_pdf_bytes()
+                st.rerun()
+        with c2:
+            if st.button("BUs", key="b0_bu", use_container_width=True):
+                st.session_state["inicio_opcion"] = "bus"
+                # Limpieza de restos de botones previos
+                for key in list(st.session_state.keys()):
+                    if key.startswith("btn_"):
+                        del st.session_state[key]
+                # Mensaje del chatbot equivalente al que mostraba el bloque 1
+                st.session_state["chat_history"].append({
+                    "role": "assistant",
+                    "content": "Elige una BU"
+                })
+                update_pdf_bytes()
+                st.rerun()
+    
+    # ---------------------------
+    # Bloque 1: BUs (aparece si en bloque 0 eligieron 'BUs')
+    # ---------------------------
+    if st.session_state["fase"] is None and not st.session_state.get("finalizado", False) and st.session_state.get("inicio_opcion") == "bus":
         cols = st.columns(4)
         for i, bu in enumerate(lista_bu):
             with cols[i % 4]:
@@ -579,27 +613,23 @@ if "bu_simulada" in st.session_state:   # ✅ también en OFFLINE
                     st.session_state["micros_por_bu"] = obtener_micromomentos_por_bu(bu, engine)
                     st.session_state["chat_history"].append(
                         {"role": "assistant",
-                         "content": f"Estos son los micromomentos disponibles en la BU {bu}. "
-                                    f"¿Sobre cuál querrías que nos centráramos?"}
+                         "content": f"Estos son los micromomentos disponibles en la BU {bu}. ¿Sobre cuál querrías que nos centráramos?"}
                     )
                     st.session_state["fase"] = "micros_por_bu"
                     update_pdf_bytes()
                     st.rerun()
-
-        # Bloque 2: Micromomentos de la BU simulada
-        st.markdown(
-            f'<div class="chat-message assistant">... o si lo prefieres, podemos indagar en alguno de los micromomentos de la BU {st.session_state["bu_simulada"]}:</div>',
-            unsafe_allow_html=True
-        )
+    
+    # ---------------------------
+    # Bloque 2: Micromomentos de la BU simulada (aparece si en bloque 0 eligieron 'Micromomentos')
+    # ---------------------------
+    if st.session_state["fase"] is None and not st.session_state.get("finalizado", False) and st.session_state.get("inicio_opcion") == "mm":
         cols2 = st.columns(4)
         for i, mm in enumerate(st.session_state.get("micromomentos_simulada", [])):
             with cols2[i % 4]:
                 if st.button(mm, key=f"btn_mm_sim_{mm}", use_container_width=True):
                     st.session_state["mm_seleccionado"] = mm
-                    st.session_state["chat_history"].append(
-                        {"role": "user", "content": f"Micromomento seleccionado: {mm}"}
-                    )
-                    # Pasamos a BLOQUE 4 (BUs que tienen ese micromomento) y ocultamos los bloques iniciales
+                    st.session_state["chat_history"].append({"role": "user", "content": f"Micromomento seleccionado: {mm}"})
+                    # Pasamos a BLOQUE 4 (BUs que tienen ese micromomento)
                     bus_mm = obtener_bus_por_micromomento(mm, st.session_state["bu_simulada"], engine)
                     st.session_state["bus_por_mm"] = bus_mm
                     if len(bus_mm) == 1:
@@ -608,20 +638,18 @@ if "bu_simulada" in st.session_state:   # ✅ también en OFFLINE
                         st.session_state["bu_mm_seleccionada"] = unica_bu
                         st.session_state["chat_history"].append(
                             {"role": "assistant",
-                             "content": f"Este micromomento solo está presente en ésta BU. "
-                                        f"Vamos a buscar inspiración del micromomento {mm} para la BU {unica_bu}."}
+                             "content": f"Este micromomento solo está presente en ésta BU. Vamos a buscar inspiración del micromomento {mm} para la BU {unica_bu}."}
                         )
                         st.session_state["chat_history"].append(
                             {"role": "assistant",
-                             "content": f"Recopilando histórico de Improvements. Iniciando chat..."}
+                             "content": "Recopilando histórico de Improvements. Iniciando chat..."}
                         )
                         st.session_state["finalizado"] = True
                         st.rerun()
                     else:
                         st.session_state["chat_history"].append(
                             {"role": "assistant",
-                             "content": f"El micromomento {mm} está presente en las siguientes BUs. "
-                                        f"¿Quieres centrarte en una concreta o en todas?"}
+                             "content": f"El micromomento {mm} está presente en las siguientes BUs. ¿Quieres centrarte en una concreta o en todas?"}
                         )
                         st.session_state["fase"] = "bus_por_mm"
                         update_pdf_bytes()
@@ -1137,6 +1165,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
