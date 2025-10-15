@@ -799,7 +799,7 @@ if st.session_state.get("finalizado", False):
                 if not df.empty and "FECHA" in df.columns:
                     if not pd.api.types.is_datetime64_any_dtype(df["FECHA"]):
                         df["FECHA"] = pd.to_datetime(df["FECHA"], errors="coerce")
-                    corte = pd.Timestamp.today().normalize() - pd.DateOffset(months=3)
+                    corte = pd.Timestamp.today().normalize() - pd.DateOffset(months=1)
                     df = df[df["FECHA"] >= corte].copy()
                 else:
                     st.warning("No se pudo aplicar el filtro temporal (DF vacío o sin columna 'FECHA').")
@@ -1239,6 +1239,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
