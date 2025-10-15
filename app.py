@@ -581,7 +581,7 @@ if "bu_simulada" in st.session_state:   # ✅ también en OFFLINE
                 st.session_state["chat_history"].append({
                     "role": "assistant",
                     "content": f"Estos son los micromomentos de la BU {st.session_state['bu_simulada']}. "
-                                    f"¿Sobre cuál querrías que nos centráramos?"
+                                    f"¿En cuál te gustaría que nos enfoquemos?"
                 })
                 update_pdf_bytes()
                 st.rerun()
@@ -597,7 +597,7 @@ if "bu_simulada" in st.session_state:   # ✅ también en OFFLINE
                 st.session_state["chat_history"].append({
                     "role": "assistant",
                     "content": "Estas son las distintas BUs de Bupa. "
-                                    f"¿Sobre cuál querrías que nos centráramos?"
+                                    f"¿En cuál prefieres que nos centremos?"
                 })
                 update_pdf_bytes()
                 st.rerun()
@@ -1168,6 +1168,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
