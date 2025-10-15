@@ -790,18 +790,19 @@ if st.session_state.get("finalizado", False):
         bu_filter, mm_filter = _resolver_filtros_desde_estado()
 
         if OFFLINE:
-            # ---------- OFFLINE (Parquet) ----------
-            if es_general:
-                # Sin filtros: TODO el histórico (último año si tu parquet ya viene acotado; si no, tal cual)
-                df = obtener_improvements_offline(bu=None, micromomento=None)
-				# Asegurar que FECHA es datetime
-			    if not pd.api.types.is_datetime64_any_dtype(df["FECHA"]):
-			        df["FECHA"] = pd.to_datetime(df["FECHA"], errors="coerce")
-			
-			    corte = pd.Timestamp.today().normalize() - pd.DateOffset(months=6)
-			    df = df[df["FECHA"] >= corte].copy()
-            else:
-                df = obtener_improvements_offline(bu=bu_filter, micromomento=mm_filter)
+		    # ---------- OFFLINE (Parquet) ----------
+		    if es_general:
+		        # Sin filtros: TODO el histórico
+		        df = obtener_improvements_offline(bu=None, micromomento=None)
+		
+		        # Asegurar que FECHA es datetime antes de filtrar últimos 6 meses
+		        if "FECHA" in df.columns and not pd.api.types.is_datetime64_any_dtype(df["FECHA"]):
+		            df["FECHA"] = pd.to_datetime(df["FECHA"], errors="coerce")
+		
+		        corte = pd.Timestamp.today().normalize() - pd.DateOffset(months=6)
+		        df = df[df["FECHA"] >= corte].copy()
+		    else:
+		        df = obtener_improvements_offline(bu=bu_filter, micromomento=mm_filter)
 
         else:
             # ---------- SQL ----------
@@ -1236,6 +1237,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
