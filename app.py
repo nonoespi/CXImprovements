@@ -574,19 +574,19 @@ if "bu_simulada" in st.session_state:   # ✅ también en OFFLINE
     st.session_state.setdefault("inicio_opcion", None)
     st.session_state.setdefault("inspiracion_general", False)
 
-		# --- Inicialización robusta de estado ---
+	# --- Inicialización robusta de estado ---
 	def _init_state():
-	    ss = st.session_state
-	    ss.setdefault("chat_history", [])
-	    ss.setdefault("finalizado", False)
-	    ss.setdefault("fase", None)                 # <- evita KeyError al chequear fase
-	    ss.setdefault("inicio_opcion", None)
-	    ss.setdefault("bu_simulada", None)
-	    ss.setdefault("bus_permitidas", lista_bu)   # por defecto, todas
-	    ss.setdefault("inspiracion_general", False)
-	    ss.setdefault("bu_seleccionada", None)
-	    ss.setdefault("mm_seleccionado", None)
-	    ss.setdefault("bu_mm_seleccionada", None)
+		ss = st.session_state
+		ss.setdefault("chat_history", [])
+		ss.setdefault("finalizado", False)
+		ss.setdefault("fase", None)                 # <- evita KeyError al chequear fase
+		ss.setdefault("inicio_opcion", None)
+		ss.setdefault("bu_simulada", None)
+		ss.setdefault("bus_permitidas", lista_bu)   # por defecto, todas
+		ss.setdefault("inspiracion_general", False)
+		ss.setdefault("bu_seleccionada", None)
+		ss.setdefault("mm_seleccionado", None)
+		ss.setdefault("bu_mm_seleccionada", None)
 	
 	_init_state()
 	
@@ -1314,5 +1314,6 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
