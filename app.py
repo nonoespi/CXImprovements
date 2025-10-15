@@ -28,6 +28,22 @@ def _mask(v, keep=3):
     v = str(v)
     return v[:keep] + "…" if len(v) > keep else "…"
 
+# --- Inicialización robusta de estado ---
+def _init_state():
+    ss = st.session_state
+    ss.setdefault("chat_history", [])
+    ss.setdefault("finalizado", False)
+    ss.setdefault("fase", None)                 # <- evita KeyError al chequear fase
+    ss.setdefault("inicio_opcion", None)
+    ss.setdefault("bu_simulada", None)
+    ss.setdefault("bus_permitidas", lista_bu)   # por defecto, todas
+    ss.setdefault("inspiracion_general", False)
+    ss.setdefault("bu_seleccionada", None)
+    ss.setdefault("mm_seleccionado", None)
+    ss.setdefault("bu_mm_seleccionada", None)
+
+_init_state()
+
 # 🔹 Siempre limpiar cachés al arrancar
 st.cache_data.clear()
 st.cache_resource.clear()
@@ -1297,3 +1313,4 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
