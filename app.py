@@ -644,7 +644,7 @@ if "bu_simulada" in st.session_state:   # ✅ también en OFFLINE
                 st.session_state["chat_history"].append({"role": "user", "content": "Búsqueda seleccionada: Inspiración General"})
                 st.session_state["chat_history"].append({
                     "role": "assistant",
-                    "content": "Vamos a buscar inspiración general (todas las BUs y todos los micromomentos)."
+                    "content": "Vamos a buscar inspiración general (por volumen de Improvements, la inspiración general se limita a los últimos 3 meses)."
                 })
                 st.session_state["chat_history"].append({
                     "role": "assistant",
@@ -1309,3 +1309,4 @@ with header_ph.container():
 
 
     """, unsafe_allow_html=True)
+
