@@ -585,9 +585,9 @@ if "bu_simulada" in st.session_state:   # ✅ también en OFFLINE
 		)
 
     # Render del historial
-    for msg in st.session_state["chat_history"]:
-        role_class = "assistant" if msg["role"] == "assistant" else "user"
-        st.markdown(f'<div class="chat-message {role_class}">{msg["content"]}</div>', unsafe_allow_html=True)
+	for msg in st.session_state["chat_history"]:
+		role_class = "assistant" if msg["role"] == "assistant" else "user"
+		st.markdown(f'<div class="chat-message {role_class}">{msg["content"]}</div>', unsafe_allow_html=True)
 
     # ---------------------------
     # Bloque 0: Elección de flujo inicial (Micromomentos vs BUs vs Inspiración General)
@@ -1300,6 +1300,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
