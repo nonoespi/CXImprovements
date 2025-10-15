@@ -580,7 +580,7 @@ if "bu_simulada" in st.session_state:   # ✅ también en OFFLINE
                 # Mensaje del chatbot equivalente al que mostraba el bloque 2
                 st.session_state["chat_history"].append({
                     "role": "assistant",
-                    "content": f"Estos son los micromomentos disponibles en la BU {bu}. "
+                    "content": f"Estos son los micromomentos de la BU {st.session_state['bu_simulada']}. "
                                     f"¿Sobre cuál querrías que nos centráramos?"
                 })
                 update_pdf_bytes()
@@ -1167,6 +1167,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
