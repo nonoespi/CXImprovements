@@ -60,7 +60,7 @@ def _bus_permitidas_para(bu_simulada: str) -> list[str]:
 
 with st.sidebar:
     # Botón para resetear todo
-    if st.button("🔄 Resetear demo"):
+    if st.button("🔄 Resetear demo", use_container_width=True):
         st.session_state.clear()
         st.cache_data.clear()
         st.cache_resource.clear()
@@ -72,10 +72,10 @@ with st.sidebar:
         lista_bu
     )
 
-    if st.button("Comenzar"):
-		st.session_state["bu_simulada"] = bu_preseleccionada
-		# === NUEVO: restringe el universo de BUs al grupo de la BU simulada ===
-		st.session_state["bus_permitidas"] = _bus_permitidas_para(bu_preseleccionada)
+    if st.button("Comenzar", use_container_width=True):
+        st.session_state["bu_simulada"] = bu_preseleccionada
+        # === NUEVO: restringe el universo de BUs al grupo de la BU simulada ===
+        st.session_state["bus_permitidas"] = _bus_permitidas_para(bu_preseleccionada)
 
     # Mostrar BU validada
     if "bu_simulada" in st.session_state:
@@ -1275,6 +1275,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
