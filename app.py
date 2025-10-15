@@ -642,26 +642,34 @@ if "bu_simulada" in st.session_state:   # ✅ también en OFFLINE
                 update_pdf_bytes()
                 st.rerun()
     
-    # ---------------------------
-    # Bloque 1: BUs (aparece si en bloque 0 eligieron 'BUs')
-    # ---------------------------
-    if st.session_state["fase"] is None and not st.session_state.get("finalizado", False) and st.session_state.get("inicio_opcion") == "bus":
-	    bus_visibles = st.session_state.get("bus_permitidas", lista_bu)  # ← NUEVO
-	    cols = st.columns(4)
-	    for i, bu in enumerate(bus_visibles):  # ← usar solo las permitidas
-	        with cols[i % 4]:
-	            if st.button(bu, key=f"btn_bu_{bu}", use_container_width=True):
-                    st.session_state["bu_seleccionada"] = bu
-                    st.session_state["chat_history"].append({"role": "user", "content": f"BU seleccionada: {bu}"})
-                    # Pasamos a BLOQUE 3 (micromomentos de esa BU) y ocultamos los bloques iniciales
-                    st.session_state["micros_por_bu"] = obtener_micromomentos_por_bu(bu, engine)
-                    st.session_state["chat_history"].append(
-                        {"role": "assistant",
-                         "content": f"Estos son los micromomentos disponibles en la BU {bu}. ¿Sobre cuál querrías que nos centráramos?"}
-                    )
-                    st.session_state["fase"] = "micros_por_bu"
-                    update_pdf_bytes()
-                    st.rerun()
+# ---------------------------
+# Bloque 1: BUs (aparece si en bloque 0 eligieron 'BUs')
+# ---------------------------
+if (
+    st.session_state["fase"] is None
+    and not st.session_state.get("finalizado", False)
+    and st.session_state.get("inicio_opcion") == "bus"
+):
+    bus_visibles = st.session_state.get("bus_permitidas", lista_bu)  # ← NUEVO
+    cols = st.columns(4)
+    for i, bu in enumerate(bus_visibles):  # ← usar solo las permitidas
+        with cols[i % 4]:
+            if st.button(bu, key=f"btn_bu_{bu}", use_container_width=True):
+                st.session_state["bu_seleccionada"] = bu
+                st.session_state["chat_history"].append(
+                    {"role": "user", "content": f"BU seleccionada: {bu}"}
+                )
+                # Pasamos a BLOQUE 3 (micromomentos de esa BU) y ocultamos los bloques iniciales
+                st.session_state["micros_por_bu"] = obtener_micromomentos_por_bu(bu, engine)
+                st.session_state["chat_history"].append(
+                    {
+                        "role": "assistant",
+                        "content": f"Estos son los micromomentos disponibles en la BU {bu}. ¿Sobre cuál querrías que nos centráramos?"
+                    }
+                )
+                st.session_state["fase"] = "micros_por_bu"
+                update_pdf_bytes()
+                st.rerun()
     
     # ---------------------------
     # Bloque 2: Micromomentos de la BU simulada (aparece si en bloque 0 eligieron 'Micromomentos')
@@ -1275,6 +1283,7 @@ with header_ph.container():
     </div>
 
     """, unsafe_allow_html=True)
+
 
 
 
