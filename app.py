@@ -399,155 +399,75 @@ def obtener_bus_por_micromomento(mm, bu_ref, eng):
         return df_bu["bu"].tolist() if not df_bu.empty else []
 
 @st.cache_data(show_spinner=False)
-def obtener_improvements_offline(
-    bu: str | None,
-    micromomento: str | None,
-) -> pd.DataFrame:
+def obtener_improvements_offline(bu: str|None, micromomento: str|None) -> pd.DataFrame:
     """
-    Carga mejoras desde parquet (load_df_mejoras) y aplica filtros por BU y/o Micromomento.
-    - Prioriza filtrar por MICROMOMENTO_GLOBAL cuando hay MM.
-    - Si no se puede resolver el global, cae a MICROMOMENTO (case-insensitive).
-    - Si el filtrado estricto queda vacío, intenta un 'contains' (flexible).
-    Columnas esperadas en mejoras:
-      ['FECHA','BU','MICROMOMENTO','MICROMOMENTO_GLOBAL','MEJORA', ...]
-    Columnas esperadas en micromomentos (catálogo):
-      ['bu','micromomento','micromomento_global']
+    Usa únicamente mejorasactuar.parquet (con columnas: FECHA, BU, MICROMOMENTO, MICROMOMENTO_GLOBAL, MEJORA[, USUARIO]).
+    Casos:
+      1) mm y bu is None  -> micromomento en TODAS las BUs    => filtra por MICROMOMENTO_GLOBAL
+      2) mm y bu not None -> micromomento dentro de una BU    => filtra BU + MICROMOMENTO_GLOBAL
+      3) bu y mm is None  -> solo BU (todos los micromomentos) => filtra por BU
     """
-    # --- Carga base ---
     df = load_df_mejoras().copy()
 
-    # --- Limpieza básica ---
-    if "MEJORA" in df.columns:
-        df = df[df["MEJORA"].notna() & (df["MEJORA"].astype(str).str.strip() != "")]
-    if "BU" in df.columns:
-        df["BU"] = df["BU"].astype(str).str.strip().str.upper()
-    if "FECHA" in df.columns and not pd.api.types.is_datetime64_any_dtype(df["FECHA"]):
-        df["FECHA"] = pd.to_datetime(df["FECHA"], errors="coerce")
+    # Limpieza básica
+    df = df[df["MEJORA"].notna() & (df["MEJORA"].astype(str).str.strip() != "")]
+    df["BU"] = df["BU"].astype(str).str.strip().str.upper()
 
-    # Helpers
-    def _s(x):  # string seguro
-        return "" if x is None else str(x)
+    bu_filter = bu.strip().upper() if isinstance(bu, str) and bu.strip() else None
+    mm_filter = micromomento.strip() if isinstance(micromomento, str) and micromomento.strip() else None
 
-    def _norm_series(s: pd.Series) -> pd.Series:
-        return s.astype(str).str.strip().str.lower()
-
-    bu_filter = (_s(bu).strip().upper() or None)
-    mm_filter = (_s(micromomento).strip() or None)
-
-    st.caption(f"bu_filter = {bu_filter}")
-    st.caption(f"mm_filter = {mm_filter}")
-
-    # --- Resolver MICROMOMENTO_GLOBAL (MMG) ---
-    def _resolver_mmg_desde_bu_y_mm(mm_in: str | None, bu_ref: str | None) -> str | None:
-        """
-        1) Catálogo (load_df_micros) con BU específica
-        2) Catálogo global (sin BU) por nombre o por mm_global directo
-        3) Fallback: inferir desde el parquet de mejoras (por frecuencia / contains)
-        """
-        if not mm_in:
-            return None
-        mm_low = str(mm_in).strip().lower()
-
-        # 1-2) Intento con catálogo
-        try:
-            dfm = load_df_micros().copy()
-            for col in ("bu", "micromomento", "micromomento_global"):
-                if col in dfm.columns:
-                    dfm[col] = dfm[col].astype(str).str.strip()
-        except Exception:
-            dfm = pd.DataFrame()
-
-        if not dfm.empty:
-            if bu_ref:
-                bu_ref_up = str(bu_ref).strip().upper()
-                sub = dfm[
-                    (dfm.get("bu", "").str.upper() == bu_ref_up) &
-                    (dfm.get("micromomento", "").str.lower() == mm_low)
-                ]
-                if not sub.empty:
-                    return sub.iloc[0]["micromomento_global"]
-
-            sub2 = dfm[dfm.get("micromomento", "").str.lower() == mm_low]
-            if not sub2.empty:
-                return sub2.iloc[0]["micromomento_global"]
-
-            sub3 = dfm[dfm.get("micromomento_global", "").str.lower() == mm_low]
-            if not sub3.empty:
-                return sub3.iloc[0]["micromomento_global"]
-
-        # 3) Fallback con el propio parquet de mejoras
-        df_mej = load_df_mejoras().copy()
-        if "BU" in df_mej.columns:
-            df_mej["BU"] = df_mej["BU"].astype(str).str.strip().str.upper()
-
-        candidatos = pd.Series(dtype=str)
-
-        if "MICROMOMENTO_GLOBAL" in df_mej.columns:
-            s = df_mej["MICROMOMENTO_GLOBAL"].astype(str).str.strip()
-            mask = s.str.lower().str.contains(mm_low, na=False)
-            if bu_ref:
-                mask &= (df_mej["BU"] == str(bu_ref).strip().upper())
-            candidatos = s[mask]
-
-        if candidatos.empty and "MICROMOMENTO" in df_mej.columns:
-            s2 = df_mej["MICROMOMENTO"].astype(str).str.strip()
-            mask2 = s2.str.lower().str.contains(mm_low, na=False)
-            if bu_ref:
-                mask2 &= (df_mej["BU"] == str(bu_ref).strip().upper())
-            if "MICROMOMENTO_GLOBAL" in df_mej.columns:
-                cand_df = df_mej.loc[mask2, ["MICROMOMENTO_GLOBAL"]]
-                if not cand_df.empty:
-                    return cand_df["MICROMOMENTO_GLOBAL"].astype(str).str.strip().mode().iloc[0]
-
-        if not candidatos.empty:
-            return candidatos.value_counts().index[0]
-
-        return None
-
+    # Determinar micromomento_global cuando corresponda
     mmg = None
     if mm_filter:
-        # Prioriza la BU del parámetro; si no hay, usa sesión
-        bu_ref = bu_filter or st.session_state.get("bu_seleccionada") or st.session_state.get("bu_simulada")
-        mmg = _resolver_mmg_desde_bu_y_mm(mm_filter, bu_ref)
-
-    # --- Aplicar filtros ---
-    has_mmg_col = "MICROMOMENTO_GLOBAL" in df.columns
-    has_mm_col  = "MICROMOMENTO" in df.columns
-    has_bu_col  = "BU" in df.columns
-
-    # BU
-    if bu_filter and has_bu_col:
-        df = df[_norm_series(df["BU"]) == bu_filter.strip().lower()]
-
-    # MM (primero estricto, luego fallback flexible si queda vacío)
-    if mm_filter:
-        mmf_low = mm_filter.strip().lower()
-
-        if mmg and has_mmg_col:
-            df_strict = df[_norm_series(df["MICROMOMENTO_GLOBAL"]) == mmg.strip().lower()]
-        elif has_mm_col:
-            df_strict = df[_norm_series(df["MICROMOMENTO"]) == mmf_low]
+        # ¿Desde qué BU hay que resolver el 'mm_global'?
+        # - Si estamos en flujo "micros_por_bu", el mm viene ya de esa BU.
+        # - Si estamos en flujo "bus_por_mm", el mm se eligió desde la BU simulada.
+        bu_ref = None
+        if st.session_state.get("fase") == "micros_por_bu" and st.session_state.get("bu_seleccionada"):
+            bu_ref = st.session_state["bu_seleccionada"]
         else:
-            df_strict = df.iloc[0:0]
+            bu_ref = st.session_state.get("bu_simulada") or st.session_state.get("bu_seleccionada")
 
-        if df_strict.empty:
-            if has_mmg_col:
-                df_flex = df[_norm_series(df["MICROMOMENTO_GLOBAL"]).str.contains(mmf_low, na=False)]
-            elif has_mm_col:
-                df_flex = df[_norm_series(df["MICROMOMENTO"]).str.contains(mmf_low, na=False)]
-            else:
-                df_flex = df.iloc[0:0]
-            df = df_flex
+        mmg = _resolver_mmg_desde_bu_y_mm(mm_filter, bu_ref) if bu_ref else None
+
+    # Aplicar filtros por caso
+    if mm_filter and not bu_filter:
+        # Caso 1: micromomento en TODAS las BUs
+        if mmg:
+            df = df[df["MICROMOMENTO_GLOBAL"] == mmg]
         else:
-            df = df_strict
+            # Fallback por nombre exacto si no resolvemos mmg
+            df = df[df["MICROMOMENTO"] == mm_filter]
 
-    # --- Orden final ---
-    if "FECHA" in df.columns:
-        df = df.sort_values(by="FECHA", ascending=False, kind="stable").reset_index(drop=True)
+    elif mm_filter and bu_filter:
+        # Caso 2: micromomento + BU concreta
+        df = df[df["BU"] == bu_filter]
+        if mmg:
+            df = df[df["MICROMOMENTO_GLOBAL"] == mmg]
+        else:
+            df = df[df["MICROMOMENTO"] == mm_filter]
+
+    elif bu_filter and not mm_filter:
+        # Caso 3: solo BU
+        df = df[df["BU"] == bu_filter]
+
+    # Orden final por fecha
+    order_cols = [c for c in ["FECHA"] if c in df.columns]
+    df = df.sort_values(by=order_cols, ascending=False, na_position="last")
+
+    # === MODO DEMO: únicos + muestreo ===
+    if "ID_MEJORA" in df.columns:
+        key_cols = ["ID_MEJORA"]
     else:
-        df = df.reset_index(drop=True)
+        # Fallback estable por contenido (evita depender de TITULO/DETALLE)
+        key_cols = ["BU", "MICROMOMENTO_GLOBAL", "MEJORA"]
 
-    return df
+    df_unique = df.drop_duplicates(subset=key_cols)
+    total_unique = len(df_unique)
+
+    # st.caption(f"Se han cargado {total_unique} Improvements disponibles (modo DEMO).")
+
+    return df.reset_index(drop=True)
 
 def _resolver_filtros_desde_estado():
     """
@@ -1388,6 +1308,7 @@ with header_ph.container():
 
 
     """, unsafe_allow_html=True)
+
 
 
 
