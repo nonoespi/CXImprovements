@@ -9,6 +9,7 @@ from sqlalchemy import text
 import urllib
 import json
 from openai import AzureOpenAI
+import tiktoken
 import time
 from io import BytesIO
 from datetime import datetime
@@ -58,6 +59,24 @@ def _bus_permitidas_para(bu_simulada: str) -> list[str]:
     base = FUNDING if grupo == "FUNDING" else PROVISION if grupo == "PROVISION" else set()
     # Conserva el orden de lista_bu original, filtrando por el grupo
     return [b for b in lista_bu if b in base]
+
+
+def _encoding_for_model(model_name: str | None = None):
+    try:
+        if model_name:
+            return tiktoken.encoding_for_model(model_name)
+    except KeyError:
+        pass
+    return tiktoken.get_encoding("cl100k_base")
+
+
+def _count_message_tokens(messages: list[dict[str, str]], model_name: str | None = None) -> int:
+    encoding = _encoding_for_model(model_name)
+    total = 0
+    for message in messages:
+        content = message.get("content") or ""
+        total += len(encoding.encode(content))
+    return total
 
 with st.sidebar:
     # Botón para resetear todo
@@ -1227,6 +1246,9 @@ if st.session_state.get("finalizado", False):
 
     # Construcción final de messages (sin nulos)
     messages = [{"role": "system", "content": system_prompt}] + hist
+
+    tokens_en_turno = _count_message_tokens(messages, cfg("AZURE_OPENAI_DEPLOYMENT"))
+    st.info(f"Tokens del mensaje actual: {tokens_en_turno}")
 
     try:
         response = client.chat.completions.create(
