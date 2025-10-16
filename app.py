@@ -546,8 +546,6 @@ def obtener_improvements_offline(
 
     return df
 
-
-
 def _resolver_filtros_desde_estado():
     """
     Devuelve (bu_filter, mm_filter) según los estados:
@@ -1387,6 +1385,7 @@ with header_ph.container():
 
 
     """, unsafe_allow_html=True)
+
 
 
 
