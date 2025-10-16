@@ -234,36 +234,39 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-
-def _merge_full_chat() -> list:
+def _merge_full_chat():
     full = []
     ch1 = st.session_state.get("chat_history", [])
     ch2 = st.session_state.get("chat_history_analisis", [])
     if ch1:
         full.extend(ch1)
     if ch2:
-        full.append({"role": "separator", "content": "--- SEGUNDO CHATBOT (Análisis) ---"})
         full.extend(ch2)
     return full
 
-def _build_pdf_bytes(full_chat: list) -> bytes:
-    if not full_chat:
-        return b""
+def _build_pdf_bytes(full_chat):
+    if not full_chat: return b""
     buf = BytesIO()
-    doc = SimpleDocTemplate(
-        buf, pagesize=A4,
-        leftMargin=2*cm, rightMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm
-    )
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=2*cm, rightMargin=2*cm,
+                            topMargin=2*cm, bottomMargin=2*cm)
     styles = getSampleStyleSheet()
-    user_style = ParagraphStyle("User", parent=styles["Normal"], textColor=colors.black, fontSize=11, leading=14, spaceAfter=8)
-    assistant_style = ParagraphStyle("Assistant", parent=styles["Normal"], textColor=colors.HexColor("#0056A3"), fontSize=11, leading=14, spaceAfter=8)
-    sep_style = ParagraphStyle("Sep", parent=styles["Normal"], alignment=1, textColor=colors.HexColor("#6c757d"), fontSize=10, spaceBefore=6, spaceAfter=12)
-    footer_style = ParagraphStyle("Footer", parent=styles["Normal"], textColor=colors.HexColor("#888"), fontSize=8, spaceBefore=18, alignment=2)
+    user_style = ParagraphStyle("User", parent=styles["Normal"], textColor=colors.HexColor("#0056A3"),
+                                fontSize=11, leading=14, spaceAfter=8)
+    assistant_style = ParagraphStyle("Assistant", parent=styles["Normal"],
+                                     textColor=colors.black,
+                                     fontSize=11, leading=14, spaceAfter=8)
+    sep_style = ParagraphStyle("Sep", parent=styles["Normal"], alignment=1,
+                               textColor=colors.HexColor("#6c757d"),
+                               fontSize=10, spaceBefore=6, spaceAfter=12)
+    footer_style = ParagraphStyle("Footer", parent=styles["Normal"],
+                                  textColor=colors.HexColor("#888"),
+                                  fontSize=8, spaceBefore=18, alignment=2)
 
-    elements = [Paragraph("<b>Histórico de conversación CX Improvements</b>", styles["Title"]), Spacer(1, 12)]
+    elements = [Paragraph("<b>CX Improvements</b>", styles["Title"]), Spacer(1, 12)]
     for msg in full_chat:
-        role = msg.get("role", "")
-        content = (msg.get("content", "") or "").replace("\n", "<br/>")
+        role = msg.get("role","")
+        content = (msg.get("content","") or "").replace("\n","<br/>")
         if role == "separator":
             elements.append(Paragraph(content or "---", sep_style))
         elif role == "assistant":
@@ -455,7 +458,7 @@ def obtener_improvements_offline(bu: str|None, micromomento: str|None) -> pd.Dat
     order_cols = [c for c in ["FECHA"] if c in df.columns]
     df = df.sort_values(by=order_cols, ascending=False, na_position="last")
 
-    # === MODO DEMO: únicos + muestreo ===
+    # === MODO DEMO: únicos ===
     if "ID_MEJORA" in df.columns:
         key_cols = ["ID_MEJORA"]
     else:
@@ -703,7 +706,7 @@ if (
                     st.session_state["bu_mm_seleccionada"] = unica_bu
                     st.session_state["chat_history"].append(
                         {"role": "assistant",
-                         "content": f"Este micromomento solo está presente en ésta BU. Vamos a buscar inspiración del micromomento {mm} para la BU {unica_bu}."}
+                         "content": f"Este micromomento solo está presente en esta BU. Vamos a buscar inspiración del micromomento {mm} para la BU {unica_bu}."}
                     )
                     st.session_state["chat_history"].append(
                         {"role": "assistant",
@@ -1252,54 +1255,6 @@ if st.session_state.get("finalizado", False):
     with st.chat_message("assistant"):
         st.markdown(answer)
     update_pdf_bytes()
-
-def _merge_full_chat():
-    full = []
-    ch1 = st.session_state.get("chat_history", [])
-    ch2 = st.session_state.get("chat_history_analisis", [])
-    if ch1:
-        full.extend(ch1)
-    if ch2:
-        full.extend(ch2)
-    return full
-
-def _build_pdf_bytes(full_chat):
-    if not full_chat: return b""
-    buf = BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4,
-                            leftMargin=2*cm, rightMargin=2*cm,
-                            topMargin=2*cm, bottomMargin=2*cm)
-    styles = getSampleStyleSheet()
-    user_style = ParagraphStyle("User", parent=styles["Normal"], textColor=colors.HexColor("#0056A3"),
-                                fontSize=11, leading=14, spaceAfter=8)
-    assistant_style = ParagraphStyle("Assistant", parent=styles["Normal"],
-                                     textColor=colors.black,
-                                     fontSize=11, leading=14, spaceAfter=8)
-    sep_style = ParagraphStyle("Sep", parent=styles["Normal"], alignment=1,
-                               textColor=colors.HexColor("#6c757d"),
-                               fontSize=10, spaceBefore=6, spaceAfter=12)
-    footer_style = ParagraphStyle("Footer", parent=styles["Normal"],
-                                  textColor=colors.HexColor("#888"),
-                                  fontSize=8, spaceBefore=18, alignment=2)
-
-    elements = [Paragraph("<b>CX Improvements</b>", styles["Title"]), Spacer(1, 12)]
-    for msg in full_chat:
-        role = msg.get("role","")
-        content = (msg.get("content","") or "").replace("\n","<br/>")
-        if role == "separator":
-            elements.append(Paragraph(content or "---", sep_style))
-        elif role == "assistant":
-            elements.append(Paragraph(f"<b>Asistente:</b> {content}", assistant_style))
-        elif role == "user":
-            elements.append(Paragraph(f"<b>Usuario:</b> {content}", user_style))
-        else:
-            elements.append(Paragraph(content, user_style))
-
-    ts = datetime.now().strftime("%d/%m/%Y %H:%M")
-    elements.append(Paragraph(f"Exportado el {ts}", footer_style))
-    doc.build(elements)
-    return buf.getvalue()
-    
     
 # 1) Fusionar chats con TODO lo que haya ya en sesión (incluye el último turno)
 _full = _merge_full_chat()
@@ -1326,6 +1281,7 @@ with header_ph.container():
 
 
     """, unsafe_allow_html=True)
+
 
 
 
