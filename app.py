@@ -509,7 +509,7 @@ def _resolver_filtros_desde_estado():
 
 # ====== Preparación de datos tras elegir BU simulada (SQL u OFFLINE) ======
 engine = crear_engine()
-# st.caption("Modo datos: OFFLINE (CSV/Parquet)" if engine is None else "Modo datos: SQL")
+st.caption("Modo datos: SQL")
 
 if "bu_simulada" in st.session_state:
     bu_sim = st.session_state["bu_simulada"]
@@ -529,11 +529,8 @@ if "bu_simulada" in st.session_state:
             # Ping + probe (solo SQL)
             with engine.connect() as conn:
                 ping = conn.exec_driver_sql("SELECT 1").scalar()
-                st.caption(f"Ping SQL (final): {ping}")
-            with engine.connect() as conn:
-                df_probe = pd.read_sql_query("SELECT TOP 5 * FROM dbo.Micromomentos_Actuar", conn)
-            st.caption(f"Probe Micromomentos_Actuar: filas={len(df_probe)} cols={list(df_probe.columns)}")
-
+                st.caption(f"Ping SQL: {ping}")
+            
             # Lista de micromomentos para la BU simulada (SQL)
             st.session_state["micromomentos_simulada"] = obtener_micromomentos_por_bu(bu_sim, engine)
 
@@ -879,7 +876,7 @@ if st.session_state.get("finalizado", False):
 
             # (Opcional) Ping
             with engine_final.connect() as conn:
-                st.caption(f"Ping SQL (final): {conn.exec_driver_sql('SELECT 1').scalar()}")
+                st.caption(f"Ping SQL: {conn.exec_driver_sql('SELECT 1').scalar()}")
 
             # Sanitizar comillas para el SQL dinámico que ya tienes
             def sql_safe(s: str) -> str:
@@ -896,7 +893,7 @@ if st.session_state.get("finalizado", False):
                                B.Id_Seleccionado AS Id_Desplegable
                         FROM MEJORASACTUAR A
                         LEFT JOIN DATOSMULTIPLESMEJORASACTUAR B ON A.ID_MEJORA = B.ID_MEJORA
-                        WHERE A.ESVALIDADABU=1 AND A.ESVALIDADASANITAS=1
+                        WHERE (A.ESVALIDADABU=1 OR A.ESVALIDADASANITAS=1)
 	                      AND CAST(A.FECHA AS DATE)>=CAST(DATEADD(MONTH,-3,GETDATE()) AS DATE)
                           AND (
                               (B.Id_Desplegable = 'Id_Desplegable3' AND A.BU IN ('HOSPITALES', 'DENTAL', 'MAYORES')) OR
@@ -952,7 +949,7 @@ if st.session_state.get("finalizado", False):
                                    B.Id_Seleccionado AS Id_Desplegable
                             FROM MEJORASACTUAR A
                             LEFT JOIN DATOSMULTIPLESMEJORASACTUAR B ON A.ID_MEJORA = B.ID_MEJORA
-                            WHERE A.ESVALIDADABU=1 AND A.ESVALIDADASANITAS=1
+                            WHERE (A.ESVALIDADABU=1 OR A.ESVALIDADASANITAS=1)
 	                          AND CAST(A.FECHA AS DATE)>=CAST(DATEADD(YEAR,-1,GETDATE()) AS DATE)
                               AND (
                                   (B.Id_Desplegable = 'Id_Desplegable3' AND A.BU IN ('HOSPITALES', 'DENTAL', 'MAYORES'))
@@ -996,7 +993,7 @@ if st.session_state.get("finalizado", False):
                                    B.Id_Seleccionado AS Id_Desplegable
                             FROM MEJORASACTUAR A
                             LEFT JOIN DATOSMULTIPLESMEJORASACTUAR B ON A.ID_MEJORA = B.ID_MEJORA
-                            WHERE A.ESVALIDADABU=1 AND A.ESVALIDADASANITAS=1
+                            WHERE (A.ESVALIDADABU=1 OR A.ESVALIDADASANITAS=1)
 	                          AND CAST(A.FECHA AS DATE)>=CAST(DATEADD(YEAR,-1,GETDATE()) AS DATE)
                               AND A.BU=@BU
                               AND (
@@ -1039,7 +1036,8 @@ if st.session_state.get("finalizado", False):
                                    B.Id_Seleccionado AS Id_Desplegable
                             FROM MEJORASACTUAR A
                             LEFT JOIN DATOSMULTIPLESMEJORASACTUAR B ON A.ID_MEJORA = B.ID_MEJORA
-                            WHERE CAST(A.FECHA AS DATE)>=CAST(DATEADD(YEAR,-1,GETDATE()) AS DATE)
+                            WHERE (A.ESVALIDADABU=1 OR A.ESVALIDADASANITAS=1)
+                              AND CAST(A.FECHA AS DATE)>=CAST(DATEADD(YEAR,-1,GETDATE()) AS DATE)
                               AND A.BU=@BU
                               AND (
                                   (B.Id_Desplegable = 'Id_Desplegable3' AND A.BU IN ('HOSPITALES', 'DENTAL', 'MAYORES'))
