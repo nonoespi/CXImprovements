@@ -509,6 +509,7 @@ def _resolver_filtros_desde_estado():
 
 # ====== Preparación de datos tras elegir BU simulada (SQL u OFFLINE) ======
 engine = crear_engine()
+st.caption("Modo datos: SQL")
 
 if "bu_simulada" in st.session_state:
     bu_sim = st.session_state["bu_simulada"]
@@ -572,6 +573,7 @@ if "bu_simulada" in st.session_state:   # ✅ también en OFFLINE
     st.session_state.setdefault("bu_mm_seleccionada", None)
     st.session_state.setdefault("inicio_opcion", None)
     st.session_state.setdefault("inspiracion_general", False)
+    st.session_state.setdefault("limite_chat_mostrado", False)
 
     # Mensaje de bienvenida (una vez)
     if not st.session_state["chat_history"]:
@@ -1110,12 +1112,35 @@ if st.session_state.get("finalizado", False):
             st.markdown(msg["content"])
 
     # =========================================================
-    # 🔹 Entrada del usuario
+    # 🔹 Entrada del usuario (con límite de 15 mensajes)
     # =========================================================
-    if prompt := st.chat_input("Escribe tu mensaje..."):
-        st.session_state["chat_history_analisis"].append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+    LIMITE_USER_MSGS = 15
+
+    # Cuenta de mensajes del usuario ya enviados
+    user_count = sum(1 for m in st.session_state["chat_history_analisis"] if m.get("role") == "user")
+
+    # Si alcanzó el límite, mostramos aviso una sola vez y bloqueamos la caja
+    if user_count >= LIMITE_USER_MSGS:
+        if not st.session_state.get("limite_chat_mostrado", False):
+            st.session_state["chat_history_analisis"].append({
+                "role": "assistant",
+                "content": f"Has alcanzado el límite de {LIMITE_USER_MSGS} mensajes en esta demo. "
+                           f"Si necesitas continuar, reinicia la demo desde la barra lateral."
+            })
+            update_pdf_bytes()
+            st.session_state["limite_chat_mostrado"] = True
+
+        # Caja de texto deshabilitada
+        st.chat_input("Has alcanzado el límite de mensajes en esta demo.", disabled=True)
+
+    else:
+        # Caja de texto activa
+        prompt = st.chat_input("Escribe tu mensaje...")
+        if prompt:
+            # Guardamos el mensaje del usuario
+            st.session_state["chat_history_analisis"].append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
 
         # ---- Llamada a Azure OpenAI ----
         client = AzureOpenAI(
@@ -1305,7 +1330,6 @@ with header_ph.container():
 
 
     """, unsafe_allow_html=True)
-
 
 
 
