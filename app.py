@@ -509,7 +509,7 @@ def _resolver_filtros_desde_estado():
 
 # ====== Preparación de datos tras elegir BU simulada (SQL u OFFLINE) ======
 engine = crear_engine()
-st.caption("Modo datos: SQL")
+# st.caption("Modo datos: SQL")
 
 if "bu_simulada" in st.session_state:
     bu_sim = st.session_state["bu_simulada"]
@@ -1330,6 +1330,7 @@ with header_ph.container():
 
 
     """, unsafe_allow_html=True)
+
 
 
 
