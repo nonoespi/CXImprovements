@@ -433,6 +433,9 @@ def obtener_improvements_offline(
     bu_filter = (_s(bu).strip().upper() or None)
     mm_filter = (_s(micromomento).strip() or None)
 
+    st.caption(f"bu_filter = {bu_filter}")
+    st.caption(f"mm_filter = {mm_filter}")
+
     # --- Resolver MICROMOMENTO_GLOBAL (mmg) a partir de (bu, mm) ---
     def _resolver_mmg_desde_bu_y_mm(mm_in: str | None, bu_ref: str | None) -> str | None:
         if not mm_in:
@@ -1344,6 +1347,7 @@ with header_ph.container():
 
 
     """, unsafe_allow_html=True)
+
 
 
 
