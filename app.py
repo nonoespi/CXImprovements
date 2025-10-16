@@ -1248,7 +1248,7 @@ if st.session_state.get("finalizado", False):
     messages = [{"role": "system", "content": system_prompt}] + hist
 
     tokens_en_turno = _count_message_tokens(messages, cfg("AZURE_OPENAI_DEPLOYMENT"))
-    st.info(f"Tokens del mensaje actual: {tokens_en_turno}")
+    st.caption(f"Tokens del mensaje actual: {tokens_en_turno}")
 
     try:
         response = client.chat.completions.create(
@@ -1339,4 +1339,5 @@ with header_ph.container():
 
 
     """, unsafe_allow_html=True)
+
 
