@@ -509,7 +509,7 @@ def _resolver_filtros_desde_estado():
 
 # ====== Preparación de datos tras elegir BU simulada (SQL u OFFLINE) ======
 engine = crear_engine()
-# st.caption("Modo datos: SQL")
+st.caption("Modo datos: SQL")
 
 if "bu_simulada" in st.session_state:
     bu_sim = st.session_state["bu_simulada"]
@@ -886,7 +886,7 @@ if st.session_state.get("finalizado", False):
             if es_general:
                 # === NUEVO CASO 0: Inspiración General (todos los datos, sin filtros de BU ni MM) ===
                 query = """
-                SELECT micromomento, A.BU, LOWER(C.USUARIO) AS USUARIO, A.TITULO+': '+A.DETALLE AS MEJORA
+                SELECT A.FECHA, micromomento, A.BU, LOWER(C.USUARIO) AS USUARIO, A.TITULO+': '+A.DETALLE AS MEJORA
                 FROM (
                     SELECT A1.*, A2.Micromomento
                     FROM (
@@ -894,7 +894,7 @@ if st.session_state.get("finalizado", False):
                                B.Id_Seleccionado AS Id_Desplegable
                         FROM MEJORASACTUAR A
                         LEFT JOIN DATOSMULTIPLESMEJORASACTUAR B ON A.ID_MEJORA = B.ID_MEJORA
-                        WHERE (A.ESVALIDADABU=1 OR A.ESVALIDADASANITAS=1)
+                        WHERE A.ESVALIDADASANITAS=1
 	                      AND CAST(A.FECHA AS DATE)>=CAST(DATEADD(MONTH,-3,GETDATE()) AS DATE)
                           AND (
                               (B.Id_Desplegable = 'Id_Desplegable3' AND A.BU IN ('HOSPITALES', 'DENTAL', 'MAYORES')) OR
@@ -942,7 +942,7 @@ if st.session_state.get("finalizado", False):
                     SET @MM =(SELECT micromomento_global FROM micromomentos_actuar WHERE bu=@BU AND micromomento=@MM_BU);
                     SET @MM_LIKE ='%' +@MM+ '%';
     
-                    SELECT @MM_BU AS micromomento, A.BU, LOWER(C.USUARIO) AS USUARIO, A.TITULO+': '+A.DETALLE AS MEJORA
+                    SELECT A.FECHA, @MM_BU AS micromomento, A.BU, LOWER(C.USUARIO) AS USUARIO, A.TITULO+': '+A.DETALLE AS MEJORA
                     FROM (
                         SELECT A1.*, A2.Micromomento
                         FROM (
@@ -950,7 +950,7 @@ if st.session_state.get("finalizado", False):
                                    B.Id_Seleccionado AS Id_Desplegable
                             FROM MEJORASACTUAR A
                             LEFT JOIN DATOSMULTIPLESMEJORASACTUAR B ON A.ID_MEJORA = B.ID_MEJORA
-                            WHERE (A.ESVALIDADABU=1 OR A.ESVALIDADASANITAS=1)
+                            WHERE A.ESVALIDADASANITAS=1
 	                          AND CAST(A.FECHA AS DATE)>=CAST(DATEADD(YEAR,-1,GETDATE()) AS DATE)
                               AND (
                                   (B.Id_Desplegable = 'Id_Desplegable3' AND A.BU IN ('HOSPITALES', 'DENTAL', 'MAYORES'))
@@ -986,7 +986,7 @@ if st.session_state.get("finalizado", False):
                     SET @MM =(SELECT micromomento_global FROM micromomentos_actuar WHERE bu=@BU AND micromomento=@MM_BU);
                     SET @MM_LIKE ='%' +@MM+ '%';
     
-                    SELECT @MM_BU AS micromomento, A.BU, LOWER(C.USUARIO) AS USUARIO, A.TITULO+': '+A.DETALLE AS MEJORA
+                    SELECT A.FECHA, @MM_BU AS micromomento, A.BU, LOWER(C.USUARIO) AS USUARIO, A.TITULO+': '+A.DETALLE AS MEJORA
                     FROM (
                         SELECT A1.*, A2.Micromomento
                         FROM (
@@ -994,7 +994,7 @@ if st.session_state.get("finalizado", False):
                                    B.Id_Seleccionado AS Id_Desplegable
                             FROM MEJORASACTUAR A
                             LEFT JOIN DATOSMULTIPLESMEJORASACTUAR B ON A.ID_MEJORA = B.ID_MEJORA
-                            WHERE (A.ESVALIDADABU=1 OR A.ESVALIDADASANITAS=1)
+                            WHERE A.ESVALIDADASANITAS=1
 	                          AND CAST(A.FECHA AS DATE)>=CAST(DATEADD(YEAR,-1,GETDATE()) AS DATE)
                               AND A.BU=@BU
                               AND (
@@ -1029,7 +1029,7 @@ if st.session_state.get("finalizado", False):
                     DECLARE @BU NVARCHAR(200);
                     SET @BU='{bu_only}';
     
-                    SELECT micromomento, A.BU, LOWER(C.USUARIO) AS USUARIO, A.TITULO+': '+A.DETALLE AS MEJORA
+                    SELECT A.FECHA, micromomento, A.BU, LOWER(C.USUARIO) AS USUARIO, A.TITULO+': '+A.DETALLE AS MEJORA
                     FROM (
                         SELECT A1.*, A2.Micromomento
                         FROM (
@@ -1037,7 +1037,7 @@ if st.session_state.get("finalizado", False):
                                    B.Id_Seleccionado AS Id_Desplegable
                             FROM MEJORASACTUAR A
                             LEFT JOIN DATOSMULTIPLESMEJORASACTUAR B ON A.ID_MEJORA = B.ID_MEJORA
-                            WHERE (A.ESVALIDADABU=1 OR A.ESVALIDADASANITAS=1)
+                            WHERE A.ESVALIDADASANITAS=1
                               AND CAST(A.FECHA AS DATE)>=CAST(DATEADD(YEAR,-1,GETDATE()) AS DATE)
                               AND A.BU=@BU
                               AND (
@@ -1112,147 +1112,150 @@ if st.session_state.get("finalizado", False):
             st.markdown(msg["content"])
 
     # =========================================================
-	# 🔹 Entrada del usuario (con límite de 15 mensajes)
-	# =========================================================
-	LIMITE_USER_MSGS = 15
-	st.session_state.setdefault("limite_chat_mostrado", False)
-	
-	user_count = sum(1 for m in st.session_state["chat_history_analisis"] if m.get("role") == "user")
-	
-	if user_count >= LIMITE_USER_MSGS:
-	    # Muestra el aviso una sola vez
-	    if not st.session_state["limite_chat_mostrado"]:
-	        st.session_state["chat_history_analisis"].append({
-	            "role": "assistant",
-	            "content": f"Has alcanzado el límite de {LIMITE_USER_MSGS} mensajes en esta demo. "
-	                       f"Si necesitas continuar, reinicia la demo desde la barra lateral."
-	        })
-	        update_pdf_bytes()
-	        st.session_state["limite_chat_mostrado"] = True
-	
-	    # Caja bloqueada y NO seguimos a la llamada del modelo
-	    st.chat_input("Has alcanzado el límite de mensajes en esta demo.", disabled=True)
-	    st.stop()  # ⬅️ Corta aquí para no construir messages ni llamar al modelo
-	
-	# Si no hay límite, la caja está activa
-	prompt = st.chat_input("Escribe tu mensaje...")
-	if not prompt:
-	    st.stop()  # ⬅️ Si no hay input, no seguimos a construir ni llamar
+    # 🔹 Entrada del usuario (con límite de 15 mensajes)
+    # =========================================================
+    LIMITE_USER_MSGS = 15
+    st.session_state.setdefault("limite_chat_mostrado", False)
 
-        # ---- Llamada a Azure OpenAI ----
-        client = AzureOpenAI(
-            api_key=cfg("AZURE_OPENAI_API_KEY"),
-            api_version=cfg("AZURE_OPENAI_API_VERSION"),
-            azure_endpoint=cfg("AZURE_OPENAI_ENDPOINT"),
-        )
-        deployment = cfg("AZURE_OPENAI_DEPLOYMENT")
+    user_count = sum(1 for m in st.session_state["chat_history_analisis"] if m.get("role") == "user")
 
-        micromomento = st.session_state.get("mm_seleccionado") or "N/A"
-        historico = st.session_state.get("historico_mejoras", [])
+    if user_count >= LIMITE_USER_MSGS:
+        # Caja bloqueada y NO seguimos a la llamada del modelo
+        st.chat_input("Has alcanzado el límite de mensajes. Esperamos que hayas obtenido inspiración. Un saludo.", disabled=True)
+        st.stop()
 
-        system_prompt = f"""
-        Eres un asesor experto de Bupa, referente internacional en gestión y optimización de la experiencia de cliente (CX Improvements). Tu función es:
+    # Si no hay límite, la caja está activa
+    prompt = st.chat_input("Escribe tu mensaje...")
+    if not prompt:
+        st.stop()
 
-        1. Recepcionar un micromomento seleccionado por el usuario (de una lista dada).
-        2. Analizar el histórico completo de Improvements implementadas, que incluye:
-           - BU (Business Unit) asociado.
-           - Micromomentos impactados (uno o varios por acción).
-           - Usuario que propuso cada acción.
-        3. Extraer aprendizajes clave de las iniciativas previas.
-        4. Generar hasta 5 Improvements originales y accionables:
-           - No repetir literalmente acciones pasadas.
-           - Ser innovador, concreto y adaptado al contexto internacional de Bupa.
-           - Para cada sugerencia, indicar el beneficio, público objetivo o enfoque diferencial.
-        5. Identificación de usuarios inspiradores:
-           - Este paso **solo debe realizarse si el usuario lo solicita explícitamente**.
-           - En ningún caso debes mencionarlo, insinuarlo ni ofrecerlo de manera proactiva.
-           - Si el usuario lo pide, busca en el histórico acciones similares ya implementadas y muestra, como máximo, 3 usuarios por sugerencia.
-           - Para cada usuario, incluye:
-             - Correo de contacto
-             - BU
-             - Breve resumen de la acción previa relacionada
-           - Si no hay usuarios relacionados, indícalo con claridad.
+    # Guardar y mostrar el mensaje del usuario
+    st.session_state["chat_history_analisis"].append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
 
-        Importante: Nunca menciones ni insinúes la existencia de usuarios inspiradores a menos que el usuario lo pida explícitamente.
+    # ------- Sanitizar historial antes de enviarlo al modelo -------
+    hist = []
+    for m in st.session_state["chat_history_analisis"]:
+        role = m.get("role")
+        content = (m.get("content") or "").strip()
+        if role in ("system", "user", "assistant") and content:
+            hist.append({"role": role, "content": content})
 
-        ---
-        
-        Formato de salida si solicitan resumen del histórico:
+    # ---- Llamada a Azure OpenAI ----
+    client = AzureOpenAI(
+        api_key=cfg("AZURE_OPENAI_API_KEY"),
+        api_version=cfg("AZURE_OPENAI_API_VERSION"),
+        azure_endpoint=cfg("AZURE_OPENAI_ENDPOINT"),
+    )
+    deployment = cfg("AZURE_OPENAI_DEPLOYMENT")
 
-        **Resumen breve del histórico**
-           - Enumera las principales acciones previas relacionadas con el micromomento seleccionado, desglosadas por BU. Pero nunca menciones el micromomento.
-           - Si no hay acciones previas, indícalo claramente y sugiere buenas prácticas generales de CX adaptadas a Bupa.
+    micromomento = st.session_state.get("mm_seleccionado") or "N/A"
+    historico = st.session_state.get("historico_mejoras", [])
 
-        Formato de salida si solicitan sugerencias inspiradoras y originales:
 
-        **Sugerencias de nuevas improvements**
-           - Cada sugerencia debe incluir:
-             - **Título breve**
-             - **Descripción** (beneficio, público objetivo o enfoque diferencial)
-             -
-           - No repetir literalmente acciones anteriores. Combinar, evolucionar o adaptar ideas para aportar valor añadido.
-
-        Formato de salida si solicitan usuarios inspiradores:
-        
-        **Usuarios con improvements similares** *(solo si el usuario lo pide expresamente)*
-           - Este bloque debe omitirse por completo salvo que el usuario lo pida.
-           - En caso afirmativo, mostrar hasta 3 usuarios por sugerencia (nunca repetir el mismo usuario, aunque tenga varias Improvements relacionadas): 
-                - Sugerencia: [Título de la sugerencia] 
-                - Usuario 1: [correo de contacto] 
-                    BU: [BU] 
-                    Improvement relacionada: [breve resumen] 
-                    
-                - Usuario 2: [...] 
-                - Usuario 3: [...] 
+    system_prompt = f"""
+    Eres un asesor experto de Bupa, referente internacional en gestión y optimización de la experiencia de cliente (CX Improvements). Tu función es:
+    
+    1. Recepcionar un micromomento seleccionado por el usuario (de una lista dada).
+    2. Analizar el histórico completo de Improvements implementadas, que incluye:
+    - BU (Business Unit) asociado.
+    - Micromomentos impactados (uno o varios por acción).
+    - Usuario que propuso cada acción.
+    3. Extraer aprendizajes clave de las iniciativas previas.
+    4. Generar hasta 5 Improvements originales y accionables:
+    - No repetir literalmente acciones pasadas.
+    - Ser innovador, concreto y adaptado al contexto internacional de Bupa.
+    - Para cada sugerencia, indicar el beneficio, público objetivo o enfoque diferencial.
+    5. Identificación de usuarios inspiradores:
+    - Este paso **solo debe realizarse si el usuario lo solicita explícitamente**.
+    - En ningún caso debes mencionarlo, insinuarlo ni ofrecerlo de manera proactiva.
+    - Si el usuario lo pide, busca en el histórico acciones similares ya implementadas y muestra, como máximo, 3 usuarios por sugerencia.
+    - Para cada usuario, incluye:
+        - Correo de contacto
+        - BU
+        - Breve resumen de la acción previa relacionada
+    - Si no hay usuarios relacionados, indícalo con claridad.
+    
+    Importante: Nunca menciones ni insinúes la existencia de usuarios inspiradores a menos que el usuario lo pida explícitamente.
+    
+    ---
+    
+    Formato de salida si solicitan resumen del histórico:
+    
+    **Resumen breve del histórico**
+    - Enumera las principales acciones previas relacionadas con el micromomento seleccionado, desglosadas por BU. Pero nunca menciones el micromomento.
+    - Si no hay acciones previas, indícalo claramente y sugiere buenas prácticas generales de CX adaptadas a Bupa.
+    
+    Formato de salida si solicitan sugerencias inspiradoras y originales:
+    
+    **Sugerencias de nuevas improvements**
+    - Cada sugerencia debe incluir:
+        - **Título breve**
+        - **Descripción** (beneficio, público objetivo o enfoque diferencial)
+        -
+    - No repetir literalmente acciones anteriores. Combinar, evolucionar o adaptar ideas para aportar valor añadido.
+    
+    Formato de salida si solicitan usuarios inspiradores:
+    
+    **Usuarios con improvements similares** *(solo si el usuario lo pide expresamente)*
+    - Este bloque debe omitirse por completo salvo que el usuario lo pida.
+    - En caso afirmativo, mostrar hasta 3 usuarios por sugerencia (nunca repetir el mismo usuario, aunque tenga varias Improvements relacionadas): 
+            - Sugerencia: [Título de la sugerencia] 
+            - Usuario 1: [correo de contacto] 
+                BU: [BU] 
+                Improvement relacionada: [breve resumen] 
                 
-             Este bloque debe ayudar al usuario a identificar compañeros a quienes consultar si desea desarrollar alguna de las Improvements propuestas.
+            - Usuario 2: [...] 
+            - Usuario 3: [...] 
+            
+        Este bloque debe ayudar al usuario a identificar compañeros a quienes consultar si desea desarrollar alguna de las Improvements propuestas.
+    
+    ---
+    
+    - Mantén un tono directo y profesional, sin informalidades ni conversación secundaria.
+    - Usa **markdown simple** (listas, numeración, negritas, cursivas) para estructurar la respuesta. Evita encabezados tipo `###`.
+    
+    ---
+    
+    Restricción de uso:
+    
+    Este modelo está diseñado exclusivamente para:
+    
+    - Proporcionar **sugerencias inspiradas y originales** de nuevas Improvements.
+    - Facilitar la **identificación de compañeros** que han desarrollado Improvements similares, como fuente de inspiración o contacto (solo si el usuario lo pide).
+    - Dar opinión sobre las Improvements, con posibilidad de expresar cuáles son más importantes para mejorar la experiencia de cliente.
+    - Dar cualquier tipo de métricas siempre y cuando estén relacionadas con el histórico de Improvements seleccionado (cuántas Improvements hay, usuarios con más Improvements realizadas...).
+    - En definitiva, puedes hacer comentarios siempre y cuando esté relacionado con el histórico de Improvements que has recopilado.
+    
+    Si el usuario solicita cualquier otro tipo de información no relacionada con este propósito (por ejemplo: datos personales, consultas fuera de contexto, información confidencial no vinculada a Improvements), el modelo debe rechazar educadamente la solicitud y mostrar el siguiente mensaje:
+    
+    "Este asistente está diseñado únicamente para facilitar la inspiración en nuevas Improvements y para ayudarte a contactar con compañeros que hayan hecho Improvements similares. No puedo ayudarte con otro tipo de consultas."
+    
+    ---
+    
+    Micromomento seleccionado: {micromomento}
+    Histórico de Improvements (JSON): {json.dumps(historico, ensure_ascii=False, default=str)}
+    """
 
-        ---
+    # Construcción final de messages (sin nulos)
+    messages = [{"role": "system", "content": system_prompt}] + hist
 
-        - Mantén un tono directo y profesional, sin informalidades ni conversación secundaria.
-        - Usa **markdown simple** (listas, numeración, negritas, cursivas) para estructurar la respuesta. Evita encabezados tipo `###`.
+    try:
+        response = client.chat.completions.create(
+            model=deployment,
+            temperature=1,
+            messages=messages
+        )
+        answer = (response.choices[0].message.content or "").strip()
+    except Exception as e:
+        answer = f"Error al contactar con el modelo: {e}"
 
-        ---
-
-        Restricción de uso:
-
-        Este modelo está diseñado exclusivamente para:
-
-        - Proporcionar **sugerencias inspiradas y originales** de nuevas Improvements.
-        - Facilitar la **identificación de compañeros** que han desarrollado Improvements similares, como fuente de inspiración o contacto (solo si el usuario lo pide).
-        - Dar opinión sobre las Improvements, con posibilidad de expresar cuáles son más importantes para mejorar la experiencia de cliente.
-        - Dar cualquier tipo de métricas siempre y cuando estén relacionadas con el histórico de Improvements seleccionado (cuántas Improvements hay, usuarios con más Improvements realizadas...).
-        - En definitiva, puedes hacer comentarios siempre y cuando esté relacionado con el histórico de Improvements que has recopilado.
-
-        Si el usuario solicita cualquier otro tipo de información no relacionada con este propósito (por ejemplo: datos personales, consultas fuera de contexto, información confidencial no vinculada a Improvements), el modelo debe rechazar educadamente la solicitud y mostrar el siguiente mensaje:
-
-        "Este asistente está diseñado únicamente para facilitar la inspiración en nuevas Improvements y para ayudarte a contactar con compañeros que hayan hecho Improvements similares. No puedo ayudarte con otro tipo de consultas."
-
-        ---
-
-        Micromomento seleccionado: {micromomento}
-        Histórico de Improvements (JSON): {json.dumps(historico, ensure_ascii=False, default=str)}
-        """
-
-        try:
-            response = client.chat.completions.create(
-                model=deployment,
-                temperature=1,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    *st.session_state["chat_history_analisis"],
-                    {"role": "user", "content": prompt}
-                ]
-            )
-            answer = response.choices[0].message.content.strip()
-        except Exception as e:
-            answer = f"Error al contactar con el modelo: {e}"
-
-        # Guardar y mostrar la respuesta
-        st.session_state["chat_history_analisis"].append({"role": "assistant", "content": answer})
-        with st.chat_message("assistant"):
-            st.markdown(answer)
-            update_pdf_bytes()
+    # Guardar y mostrar la respuesta
+    st.session_state["chat_history_analisis"].append({"role": "assistant", "content": answer})
+    with st.chat_message("assistant"):
+        st.markdown(answer)
+    update_pdf_bytes()
 
 def _merge_full_chat():
     full = []
@@ -1327,8 +1330,6 @@ with header_ph.container():
 
 
     """, unsafe_allow_html=True)
-
-
 
 
 
