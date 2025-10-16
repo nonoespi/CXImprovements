@@ -416,6 +416,9 @@ def obtener_improvements_offline(bu: str|None, micromomento: str|None) -> pd.Dat
     bu_filter = bu.strip().upper() if isinstance(bu, str) and bu.strip() else None
     mm_filter = micromomento.strip() if isinstance(micromomento, str) and micromomento.strip() else None
 
+    st.caption(f"bu_filter = {bu_filter}")
+    st.caption(f"mm_filter = {mm_filter}")
+
     # Determinar micromomento_global cuando corresponda
     mmg = None
     if mm_filter:
@@ -1312,6 +1315,7 @@ with header_ph.container():
 
 
     """, unsafe_allow_html=True)
+
 
 
 
