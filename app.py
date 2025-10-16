@@ -969,9 +969,6 @@ if st.session_state.get("finalizado", False):
                     ORDER BY A.ID_MEJORA DESC;
                     """
                     df = pd.read_sql(query, engine_final)
-                    bus_permitidas = st.session_state.get("bus_permitidas")
-                    if bus_permitidas and not df.empty and "BU" in df.columns:
-                        df = df[df["BU"].isin(bus_permitidas)].copy()
     
                 elif mm and bu_focus:
                     # === Caso 2: micromomento + BU concreta ===
@@ -1014,9 +1011,6 @@ if st.session_state.get("finalizado", False):
                     ORDER BY A.ID_MEJORA DESC;
                     """
                     df = pd.read_sql(query, engine_final)
-                    bus_permitidas = st.session_state.get("bus_permitidas")
-                    if bus_permitidas and not df.empty and "BU" in df.columns:
-                        df = df[df["BU"].isin(bus_permitidas)].copy()
     
                 elif bu_focus and not mm:
                     # === Caso 3: solo BU ===
@@ -1055,9 +1049,6 @@ if st.session_state.get("finalizado", False):
                     ORDER BY A.ID_MEJORA DESC;
                     """
                     df = pd.read_sql(query, engine_final)
-                    bus_permitidas = st.session_state.get("bus_permitidas")
-                    if bus_permitidas and not df.empty and "BU" in df.columns:
-                        df = df[df["BU"].isin(bus_permitidas)].copy()
     
                 else:
                     df = pd.DataFrame()
@@ -1326,3 +1317,4 @@ with header_ph.container():
 
 
     """, unsafe_allow_html=True)
+
