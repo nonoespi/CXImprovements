@@ -862,9 +862,9 @@ if st.session_state.get("finalizado", False):
                     st.warning("No se pudo aplicar el filtro temporal (DF vacío o sin columna 'FECHA').")
             else:
                 df = obtener_improvements_offline(bu=bu_filter, micromomento=mm_filter)
-                bus_permitidas = st.session_state.get("bus_permitidas")
-                if bus_permitidas and not df.empty and "BU" in df.columns:
-                    df = df[df["BU"].isin(bus_permitidas)].copy()
+                # bus_permitidas = st.session_state.get("bus_permitidas")
+                # if bus_permitidas and not df.empty and "BU" in df.columns:
+                #    df = df[df["BU"].isin(bus_permitidas)].copy()
 
         else:
             # ---------- SQL ----------
@@ -1312,6 +1312,7 @@ with header_ph.container():
 
 
     """, unsafe_allow_html=True)
+
 
 
 
