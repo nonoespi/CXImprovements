@@ -659,7 +659,7 @@ if "bu_simulada" in st.session_state:   # ✅ también en OFFLINE
                 st.session_state["chat_history"].append({"role": "user", "content": "Búsqueda seleccionada: Inspiración General"})
                 st.session_state["chat_history"].append({
                     "role": "assistant",
-                    "content": "Vamos a buscar inspiración general (por volumen de Improvements, la inspiración general se limita a los últimos 3 meses)."
+                    "content": "Vamos a buscar inspiración general (por volumen de Improvements, la inspiración general se limita a los últimos 2 meses)."
                 })
                 st.session_state["chat_history"].append({
                     "role": "assistant",
@@ -861,11 +861,11 @@ if st.session_state.get("finalizado", False):
                 if bus_permitidas and not df.empty and "BU" in df.columns:
                     df = df[df["BU"].isin(bus_permitidas)].copy()
 
-                # Filtro últimos 6 meses con comprobaciones seguras
+                # Filtro últimos 2 meses con comprobaciones seguras
                 if not df.empty and "FECHA" in df.columns:
                     if not pd.api.types.is_datetime64_any_dtype(df["FECHA"]):
                         df["FECHA"] = pd.to_datetime(df["FECHA"], errors="coerce")
-                    corte = pd.Timestamp.today().normalize() - pd.DateOffset(months=3)
+                    corte = pd.Timestamp.today().normalize() - pd.DateOffset(months=2)
                     df = df[df["FECHA"] >= corte].copy()
                 else:
                     st.warning("No se pudo aplicar el filtro temporal (DF vacío o sin columna 'FECHA').")
@@ -1339,5 +1339,6 @@ with header_ph.container():
 
 
     """, unsafe_allow_html=True)
+
 
 
