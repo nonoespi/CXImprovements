@@ -769,9 +769,6 @@ if st.session_state.get("fase") == "micros_por_bu":
 if st.session_state.get("fase") == "bus_por_mm":
     mm = st.session_state.get("mm_seleccionado")  # asegurar variable local
     bus_mm = obtener_bus_por_micromomento(mm, st.session_state["bu_simulada"], engine)
-    # === NUEVO: restringir a grupo del usuario ===
-    bus_mm = [b for b in bus_mm if b in st.session_state.get("bus_permitidas", bus_mm)]
-    st.session_state["bus_por_mm"] = bus_mm
 
     cols4 = st.columns(4)
     opciones = bus_mm + ["TODAS"]
@@ -1330,6 +1327,7 @@ with header_ph.container():
 
 
     """, unsafe_allow_html=True)
+
 
 
 
