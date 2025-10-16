@@ -839,7 +839,7 @@ if st.session_state.get("finalizado", False):
         bu_filter, mm_filter = _resolver_filtros_desde_estado()
 
 		st.caption(f"bu_filter = {bu_filter}")
-		st.caption(f"mm_filter = {mm_filter}")
+		st.caption(f"mm_filter = {mm_filter}")		
 
         if OFFLINE:
             # ---------- OFFLINE (Parquet) ----------
@@ -1312,5 +1312,6 @@ with header_ph.container():
 
 
     """, unsafe_allow_html=True)
+
 
 
