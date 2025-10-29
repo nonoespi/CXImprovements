@@ -1263,7 +1263,7 @@ if st.session_state.get("finalizado", False):
     if not st.session_state.get("historico_token_adjustado") and tokens_en_turno > 100000:
         historico_reducido = list(historico_para_prompt)
         rng = random.Random()
-        while tokens_en_turno > 80000 and historico_reducido:
+        while tokens_en_turno > 90000 and historico_reducido:
             idx = rng.randrange(len(historico_reducido))
             historico_reducido.pop(idx)
             system_prompt = _build_system_prompt_text(micromomento, historico_reducido)
@@ -1272,7 +1272,7 @@ if st.session_state.get("finalizado", False):
 
         st.session_state["historico_mejoras_consolidado"] = list(historico_reducido)
         st.session_state["historico_mejoras"] = list(historico_reducido)
-        if tokens_en_turno > 80000:
+        if tokens_en_turno > 90000:
             st.warning("No ha sido posible reducir el histórico por debajo de 80.000 tokens tras aplicar el recorte aleatorio.")
 
         historico_para_prompt = list(st.session_state.get("historico_mejoras_consolidado", historico_reducido))
@@ -1374,6 +1374,7 @@ with header_ph.container():
 
 
     """, unsafe_allow_html=True)
+
 
 
 
