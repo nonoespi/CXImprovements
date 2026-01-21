@@ -166,8 +166,14 @@ def _build_system_prompt_text(micromomento: str, historico: list[dict]) -> str:
         Opción 1 - Que el usuario seleccione una de las BU mostradas anteriormente para facilitarle usuarios inspiradores.
         Opción 2 - Sugerir Improvements inspiradas.
     - Solo incluye la opción 1 si existen acciones previas en el histórico. No es necesario que indiques los números de las opciones.
-	- El mensaje final debe ser conversacional, como por ejemplo "A partir de este resumen, te puedo buscar contactos que han realizado Improvements en alguna BU
-		en concreto para obtener feedback, o si lo prefieres, puedo sugerirte nuevas Improvements inspiradas en las realizadas hasta el momento"
+	- El mensaje final debe cerrarse con un único párrafo conversacional.
+	- En ese párrafo, invita al usuario a continuar de forma natural, mencionando
+	  que puedes:
+	  • buscar contactos de personas que hayan realizado Improvements en alguna BU
+	  • o sugerir nuevas Improvements inspiradas en el histórico
+	- No utilices listas, numeración, etiquetas de opción ni expresiones como
+	  "opción 1 / opción 2".
+	- Cualquier cierre que enumere alternativas se considera incorrecto.
 
 
     Formato de salida si solicitan sugerencias inspiradoras y originales:
@@ -1419,6 +1425,7 @@ with header_ph.container():
 
 
     """, unsafe_allow_html=True)
+
 
 
 
