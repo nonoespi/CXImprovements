@@ -80,6 +80,58 @@ def _count_message_tokens(messages: list[dict[str, str]], model_name: str | None
     return total
 
 
+def _build_resumen_inicial_prompt(hay_acciones_previas: bool) -> str:
+    opciones = (
+        "1 - Que el usuario seleccione una de las BU mostradas anteriormente para facilitarle "
+        "usuarios inspiradores con los que ponerse en contacto.\n"
+        "2 - Sugerir Improvements inspiradas."
+    )
+    if not hay_acciones_previas:
+        opciones = "2 - Sugerir Improvements inspiradas."
+    return (
+        "Muestra el resumen del histórico con el formato indicado en el sistema. "
+        "Al final, sugiere las opciones numeradas exactamente así:\n"
+        f"{opciones}"
+    )
+
+
+def _prepare_system_prompt_with_limit(
+    micromomento: str,
+    historico_para_prompt: list[dict],
+    hist: list[dict[str, str]],
+    user_prompt: str | None,
+    deployment: str,
+) -> tuple[str, list[dict[str, str]], int]:
+    system_prompt = _build_system_prompt_text(micromomento, historico_para_prompt)
+    messages = [{"role": "system", "content": system_prompt}] + list(hist)
+    if user_prompt:
+        messages.append({"role": "user", "content": user_prompt})
+
+    tokens_en_turno = _count_message_tokens(messages, deployment)
+    if not st.session_state.get("historico_token_adjustado") and tokens_en_turno > 100000:
+        historico_reducido = list(historico_para_prompt)
+        rng = random.Random()
+        while tokens_en_turno > 90000 and historico_reducido:
+            idx = rng.randrange(len(historico_reducido))
+            historico_reducido.pop(idx)
+            system_prompt = _build_system_prompt_text(micromomento, historico_reducido)
+            messages = [{"role": "system", "content": system_prompt}] + list(hist)
+            if user_prompt:
+                messages.append({"role": "user", "content": user_prompt})
+            tokens_en_turno = _count_message_tokens(messages, deployment)
+
+        st.session_state["historico_mejoras_consolidado"] = list(historico_reducido)
+        st.session_state["historico_mejoras"] = list(historico_reducido)
+        if tokens_en_turno > 90000:
+            st.warning("No ha sido posible reducir el histórico por debajo de 80.000 tokens tras aplicar el recorte aleatorio.")
+        st.session_state["historico_token_adjustado"] = True
+    elif not st.session_state.get("historico_token_adjustado"):
+        st.session_state["historico_mejoras_consolidado"] = list(historico_para_prompt)
+        st.session_state["historico_token_adjustado"] = True
+
+    return system_prompt, messages, tokens_en_turno
+
+
 def _build_system_prompt_text(micromomento: str, historico: list[dict]) -> str:
     return f"""
     Eres un asesor experto de Bupa, referente internacional en gestión y optimización de la experiencia de cliente (CX Improvements). Tu función es:
@@ -95,16 +147,13 @@ def _build_system_prompt_text(micromomento: str, historico: list[dict]) -> str:
     - Ser innovador, concreto y adaptado al contexto internacional de Bupa.
     - Para cada sugerencia, indicar el beneficio, público objetivo o enfoque diferencial.
     5. Identificación de usuarios inspiradores:
-    - Este paso **solo debe realizarse si el usuario lo solicita explícitamente**.
-    - En ningún caso debes mencionarlo, insinuarlo ni ofrecerlo de manera proactiva.
-    - Si el usuario lo pide, busca en el histórico acciones similares ya implementadas y muestra, como máximo, 3 usuarios por sugerencia.
+    - Este paso **solo debe realizarse si el usuario lo solicita explícitamente** o selecciona la opción 1.
+    - Cuando el usuario lo pida, busca en el histórico acciones similares ya implementadas y muestra, como máximo, 3 usuarios por BU.
     - Para cada usuario, incluye:
         - Correo de contacto
         - BU
-        - Breve resumen de la acción previa relacionada
+        - Breve explicación de por qué se ha seleccionado a este usuario
     - Si no hay usuarios relacionados, indícalo con claridad.
-
-    Importante: Nunca menciones ni insinúes la existencia de usuarios inspiradores a menos que el usuario lo pida explícitamente.
 
     ---
 
@@ -113,6 +162,10 @@ def _build_system_prompt_text(micromomento: str, historico: list[dict]) -> str:
     **Resumen breve del histórico**
     - Enumera las principales acciones previas relacionadas con el micromomento seleccionado, desglosadas por BU. Pero nunca menciones el micromomento.
     - Si no hay acciones previas, indícalo claramente y sugiere buenas prácticas generales de CX adaptadas a Bupa.
+    - Al final, sugiere opciones:
+        1 - Que el usuario seleccione una de las BU mostradas anteriormente para facilitarle usuarios inspiradores.
+        2 - Sugerir Improvements inspiradas.
+    - Solo incluye la opción 1 si existen acciones previas en el histórico.
 
     Formato de salida si solicitan sugerencias inspiradoras y originales:
 
@@ -125,13 +178,12 @@ def _build_system_prompt_text(micromomento: str, historico: list[dict]) -> str:
 
     Formato de salida si solicitan usuarios inspiradores:
 
-    **Usuarios con improvements similares** *(solo si el usuario lo pide expresamente)*
+    **Usuarios inspiradores por BU** *(solo si el usuario lo pide expresamente o selecciona la opción 1)*
     - Este bloque debe omitirse por completo salvo que el usuario lo pida.
-    - En caso afirmativo, mostrar hasta 3 usuarios por sugerencia (nunca repetir el mismo usuario, aunque tenga varias Improvements relacionadas):
-            - Sugerencia: [Título de la sugerencia]
+    - Para cada BU (si el usuario no especifica una BU, hacerlo para todas las BUs del resumen), mostrar hasta 3 usuarios:
             - Usuario 1: [correo de contacto]
                 BU: [BU]
-                Improvement relacionada: [breve resumen]
+                [breve explicación de por qué se ha seleccionado a este usuario]
 
             - Usuario 2: [...]
             - Usuario 3: [...]
@@ -150,7 +202,7 @@ def _build_system_prompt_text(micromomento: str, historico: list[dict]) -> str:
     Este modelo está diseñado exclusivamente para:
 
     - Proporcionar **sugerencias inspiradas y originales** de nuevas Improvements.
-    - Facilitar la **identificación de compañeros** que han desarrollado Improvements similares, como fuente de inspiración o contacto (solo si el usuario lo pide).
+    - Facilitar la **identificación de compañeros** que han desarrollado Improvements similares, como fuente de inspiración o contacto (solo si el usuario lo pide o selecciona la opción 1).
     - Dar opinión sobre las Improvements, con posibilidad de expresar cuáles son más importantes para mejorar la experiencia de cliente.
     - Dar cualquier tipo de métricas siempre y cuando estén relacionadas con el histórico de Improvements seleccionado (cuántas Improvements hay, usuarios con más Improvements realizadas...).
     - En definitiva, puedes hacer comentarios siempre y cuando esté relacionado con el histórico de Improvements que has recopilado.
@@ -748,10 +800,6 @@ if "bu_simulada" in st.session_state:   # ✅ también en OFFLINE
                     "role": "assistant",
                     "content": "Vamos a buscar inspiración general (por volumen de Improvements, la inspiración general se limita a los últimos 2 meses)."
                 })
-                st.session_state["chat_history"].append({
-                    "role": "assistant",
-                    "content": "Recopilando histórico de Improvements. Iniciando chat..."
-                })
                 st.session_state["finalizado"] = True
                 st.session_state["fase"] = None
                 update_pdf_bytes()
@@ -811,10 +859,6 @@ if (
                         {"role": "assistant",
                          "content": f"Este micromomento solo está presente en esta BU. Vamos a buscar inspiración del micromomento {mm} para la BU {unica_bu}."}
                     )
-                    st.session_state["chat_history"].append(
-                        {"role": "assistant",
-                         "content": "Recopilando histórico de Improvements. Iniciando chat..."}
-                    )
                     st.session_state["finalizado"] = True
                     st.rerun()
                 else:
@@ -855,10 +899,6 @@ if st.session_state.get("fase") == "micros_por_bu":
                         {"role": "assistant",
                          "content": f"Vamos a buscar inspiración del micromomento {mm} "
                                     f"para la BU {st.session_state['bu_seleccionada']}."}
-                    )
-                st.session_state["chat_history"].append(
-                        {"role": "assistant",
-                         "content": "Recopilando histórico de Improvements. Iniciando chat..."}
                     )
                 st.session_state["finalizado"] = True
                 st.session_state["fase"] = None  # ocultar botones tras la selección
@@ -909,9 +949,6 @@ if st.session_state.get("fase") == "bus_por_mm":
                         }
                     )
 
-                st.session_state["chat_history"].append(
-                    {"role": "assistant", "content": "Recopilando histórico de Improvements. Iniciando chat..."}
-                )
                 st.session_state["finalizado"] = True
                 st.session_state["fase"] = None  # ocultar botones tras la selección
 
@@ -1187,20 +1224,48 @@ if st.session_state.get("finalizado", False):
             st.session_state.pop("historico_mejoras_consolidado", None)
             st.session_state.pop("historico_token_adjustado", None)
 
+        micromomento = st.session_state.get("mm_seleccionado") or "N/A"
+        historico_base = st.session_state.get("historico_mejoras", [])
+        historico_consolidado = st.session_state.get("historico_mejoras_consolidado")
+        historico_para_prompt = historico_consolidado if historico_consolidado is not None else historico_base
+        historico_para_prompt = list(historico_para_prompt)
+
+        client = AzureOpenAI(
+            api_key=cfg("AZURE_OPENAI_API_KEY"),
+            api_version=cfg("AZURE_OPENAI_API_VERSION"),
+            azure_endpoint=cfg("AZURE_OPENAI_ENDPOINT"),
+        )
+        deployment = cfg("AZURE_OPENAI_DEPLOYMENT")
+
+        resumen_prompt = _build_resumen_inicial_prompt(bool(historico_para_prompt))
+        system_prompt, messages, _ = _prepare_system_prompt_with_limit(
+            micromomento,
+            historico_para_prompt,
+            [],
+            resumen_prompt,
+            deployment,
+        )
+        try:
+            response = client.chat.completions.create(
+                model=deployment,
+                temperature=1,
+                messages=messages,
+            )
+            answer = (response.choices[0].message.content or "").strip()
+        except Exception as e:
+            answer = f"Error al contactar con el modelo: {e}"
+
         st.session_state["chat_history_analisis"] = [
-            {"role": "assistant", "content": "He recopilado el histórico de Improvements. ¿Quieres que te muestre un resumen y algunas Improvements inspiradas?"}
+            {"role": "assistant", "content": answer}
         ]
         update_pdf_bytes()
         st.session_state["analisis_iniciado"] = True
-        st.rerun()
 
     # =========================================================
     # 🔹 Render del chatbot de análisis (versión nativa Streamlit)
     # =========================================================
     if "chat_history_analisis" not in st.session_state:
-        st.session_state["chat_history_analisis"] = [
-            {"role": "assistant", "content": "He recopilado el histórico de Improvements. ¿Quieres que te muestre un resumen y algunas Improvements inspiradas?"}
-        ]
+        st.session_state["chat_history_analisis"] = []
         update_pdf_bytes()
 
     # Mostrar historial de mensajes con API nativa
@@ -1253,36 +1318,13 @@ if st.session_state.get("finalizado", False):
     historico_para_prompt = historico_consolidado if historico_consolidado is not None else historico_base
     historico_para_prompt = list(historico_para_prompt)
 
-    system_prompt = _build_system_prompt_text(micromomento, historico_para_prompt)
-
-    # Construcción final de messages (sin nulos)
-    messages = [{"role": "system", "content": system_prompt}] + hist
-
-    tokens_en_turno = _count_message_tokens(messages, cfg("AZURE_OPENAI_DEPLOYMENT"))
-
-    if not st.session_state.get("historico_token_adjustado") and tokens_en_turno > 100000:
-        historico_reducido = list(historico_para_prompt)
-        rng = random.Random()
-        while tokens_en_turno > 90000 and historico_reducido:
-            idx = rng.randrange(len(historico_reducido))
-            historico_reducido.pop(idx)
-            system_prompt = _build_system_prompt_text(micromomento, historico_reducido)
-            messages = [{"role": "system", "content": system_prompt}] + hist
-            tokens_en_turno = _count_message_tokens(messages, cfg("AZURE_OPENAI_DEPLOYMENT"))
-
-        st.session_state["historico_mejoras_consolidado"] = list(historico_reducido)
-        st.session_state["historico_mejoras"] = list(historico_reducido)
-        if tokens_en_turno > 90000:
-            st.warning("No ha sido posible reducir el histórico por debajo de 80.000 tokens tras aplicar el recorte aleatorio.")
-
-        historico_para_prompt = list(st.session_state.get("historico_mejoras_consolidado", historico_reducido))
-        system_prompt = _build_system_prompt_text(micromomento, historico_para_prompt)
-        messages = [{"role": "system", "content": system_prompt}] + hist
-        tokens_en_turno = _count_message_tokens(messages, cfg("AZURE_OPENAI_DEPLOYMENT"))
-        st.session_state["historico_token_adjustado"] = True
-    elif not st.session_state.get("historico_token_adjustado"):
-        st.session_state["historico_mejoras_consolidado"] = list(historico_para_prompt)
-        st.session_state["historico_token_adjustado"] = True
+    system_prompt, messages, tokens_en_turno = _prepare_system_prompt_with_limit(
+        micromomento,
+        historico_para_prompt,
+        hist,
+        None,
+        deployment,
+    )
     st.caption(f"Tokens del mensaje actual: {tokens_en_turno}")
 
     try:
