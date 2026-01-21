@@ -162,10 +162,13 @@ def _build_system_prompt_text(micromomento: str, historico: list[dict]) -> str:
     **Resumen breve del histórico**
     - Enumera las principales acciones previas relacionadas con el micromomento seleccionado, desglosadas por BU. Pero nunca menciones el micromomento.
     - Si no hay acciones previas, indícalo claramente y sugiere buenas prácticas generales de CX adaptadas a Bupa.
-    - Sugiere estas dos opciones para siguientes pasos (hazlo de forma natural y conversacional):
-        1 - Que el usuario seleccione una de las BU mostradas anteriormente para facilitarle usuarios inspiradores.
-        2 - Sugerir Improvements inspiradas.
+    - Sugiere estas dos opciones para siguientes pasos:
+        Opción 1 - Que el usuario seleccione una de las BU mostradas anteriormente para facilitarle usuarios inspiradores.
+        Opción 2 - Sugerir Improvements inspiradas.
     - Solo incluye la opción 1 si existen acciones previas en el histórico. No es necesario que indiques los números de las opciones.
+	- El mensaje final debe ser conversacional, como por ejemplo "A partir de este resumen, te puedo buscar contactos que han realizado Improvements en alguna BU
+		en concreto para obtener feedback, o si lo prefieres, puedo sugerirte nuevas Improvements inspiradas en las realizadas hasta el momento"
+
 
     Formato de salida si solicitan sugerencias inspiradoras y originales:
 
@@ -1416,6 +1419,7 @@ with header_ph.container():
 
 
     """, unsafe_allow_html=True)
+
 
 
 
